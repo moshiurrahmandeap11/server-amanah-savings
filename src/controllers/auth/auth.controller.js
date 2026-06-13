@@ -1,0 +1,1165 @@
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+
+import { ObjectId } from "mongodb";
+
+import { db } from "../../database/db.js";
+import { deleteFromCloudinary } from "../../middlewares/upload.js";
+
+// Helper function to generate JWT
+const generateToken = (user) => {
+  const payload = {
+    id: user._id,
+    email: user.email,
+    phone: user.phone,
+    role: user.role || "user",
+    plan: user.selectedPlan || "bronze",
+    level: user.level || 1,
+  };
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "30d" });
+};
+
+// Helper to generate OTP (for development)
+const generateOTP = () => {
+  if (process.env.NODE_ENV === "production") {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+  return process.env.DEV_OTP || "123456";
+};
+
+// ==================== REGISTRATION ====================
+
+export const register = async (req, res) => {
+  try {
+    console.log("=== Received Registration Data ===");
+    console.log("Request Body:", req.body);
+    
+    const {
+      // Step 1 - Account
+      firstName,
+      lastName,
+      phone,
+      email,
+      password,
+      
+      // Step 4 - Personal Info
+      dob,
+      gender,
+      division,
+      district,
+      upazila,
+      occupation,
+      income,
+      referralCode,
+      village,
+      postOffice,
+      postCode,
+      
+      // Step 5 - Nominee
+      nomineeFirstName,
+      nomineeLastName,
+      nomineeRelation,
+      nomineePhone,
+      nomineeNid,
+      nomineeShare,
+      
+      // Step 6 - Plan & Goal
+      selectedPlan,
+      goalType,
+      targetAmount,
+      monthlyDeposit,
+      duration,
+      
+      // Step 7 - PIN
+      pin,
+      
+      // Step 8 - KYC
+      nidNumber,
+      islamicMode,
+      
+      // Step 9 - Payment
+      paymentMethod,
+      walletNumber,
+      walletName,
+      bankName,
+      bankAccNum,
+      bankAccName,
+      bankBranch,
+      bankRouting,
+      
+      // Agreements
+      terms,
+      withdrawalPolicy,
+      marketing,
+      kycConsent,
+    } = req.body;
+
+    // Required fields validation
+    const requiredFields = [];
+    if (!firstName) requiredFields.push("firstName");
+    if (!phone) requiredFields.push("phone");
+    if (!password) requiredFields.push("password");
+    if (!dob) requiredFields.push("dob");
+    if (!occupation) requiredFields.push("occupation");
+    if (!income) requiredFields.push("income");
+    if (!nomineeFirstName) requiredFields.push("nomineeFirstName");
+    if (!nomineeRelation) requiredFields.push("nomineeRelation");
+    if (!nomineePhone) requiredFields.push("nomineePhone");
+    if (!selectedPlan) requiredFields.push("selectedPlan");
+    if (!pin) requiredFields.push("pin");
+    if (!nidNumber) requiredFields.push("nidNumber");
+    if (!terms) requiredFields.push("terms");
+    if (!withdrawalPolicy) requiredFields.push("withdrawalPolicy");
+    if (!paymentMethod) requiredFields.push("paymentMethod");
+    if (!kycConsent) requiredFields.push("kycConsent");
+
+    if (requiredFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${requiredFields.join(", ")}`,
+        requiredFields,
+      });
+    }
+
+    // Password validation
+    if (password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters",
+      });
+    }
+
+    // PIN validation
+    if (!/^\d{6}$/.test(pin)) {
+      return res.status(400).json({
+        success: false,
+        message: "PIN must be 6 digits",
+      });
+    }
+
+    // Payment method specific validation
+    if (paymentMethod !== "bank") {
+      if (!walletNumber) {
+        return res.status(400).json({
+          success: false,
+          message: "Wallet number is required for mobile banking",
+        });
+      }
+      if (!walletName) {
+        return res.status(400).json({
+          success: false,
+          message: "Wallet account holder name is required",
+        });
+      }
+    }
+
+    if (paymentMethod === "bank") {
+      if (!bankName) {
+        return res.status(400).json({
+          success: false,
+          message: "Bank name is required",
+        });
+      }
+      if (!bankAccNum) {
+        return res.status(400).json({
+          success: false,
+          message: "Bank account number is required",
+        });
+      }
+      if (!bankAccName) {
+        return res.status(400).json({
+          success: false,
+          message: "Bank account holder name is required",
+        });
+      }
+    }
+
+    const usersCollection = db.collection("users");
+
+    // Check if user already exists
+    const existingUser = await usersCollection.findOne({
+      $or: [{ phone }, email ? { email } : null].filter(Boolean),
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: existingUser.phone === phone 
+          ? "Phone number already registered" 
+          : "Email already registered",
+      });
+    }
+
+    // Hash password and PIN
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPin = await bcrypt.hash(pin, 10);
+
+    // Create full name
+    const fullName = `${firstName} ${lastName || ""}`.trim();
+
+    // Generate referral code for user
+    const userReferralCode = `${firstName.substring(0, 3).toUpperCase()}${Math.floor(Math.random() * 10000)}`;
+
+    // Check if referral code is valid
+    let referrerId = null;
+    if (referralCode) {
+      const referrer = await usersCollection.findOne({ referralCode: referralCode.toUpperCase() });
+      if (referrer) {
+        referrerId = referrer._id;
+      }
+    }
+
+    // Create user document with role field
+    const newUser = {
+      // Personal Information
+      firstName,
+      lastName: lastName || null,
+      fullName,
+      phone,
+      email: email || null,
+      password: hashedPassword,
+      pin: hashedPin,
+      
+      // Personal Details
+      dob,
+      gender: gender || null,
+      division,
+      district,
+      upazila: upazila || null,
+      occupation,
+      income,
+      village: village || null,
+      postOffice: postOffice || null,
+      postCode: postCode || null,
+      
+      // Address
+      address: {
+        division,
+        district,
+        upazila: upazila || null,
+        village: village || null,
+        postOffice: postOffice || null,
+        postCode: postCode || null,
+      },
+      
+      // Nominee Information
+      nominee: {
+        firstName: nomineeFirstName,
+        lastName: nomineeLastName || null,
+        fullName: `${nomineeFirstName} ${nomineeLastName || ""}`.trim(),
+        relation: nomineeRelation,
+        phone: nomineePhone,
+        nid: nomineeNid || null,
+        share: parseInt(nomineeShare) || 100,
+      },
+      
+      // Plan & Goal
+      selectedPlan,
+      goal: {
+        type: goalType || null,
+        targetAmount: targetAmount ? parseInt(targetAmount) : null,
+        monthlyDeposit: monthlyDeposit ? parseInt(monthlyDeposit) : null,
+        duration: duration ? parseInt(duration) : null,
+        currentSaved: 0,
+        progress: 0,
+      },
+      
+      // KYC
+      kyc: {
+        nidNumber,
+        status: "pending",
+        submittedAt: new Date(),
+        verifiedAt: null,
+        rejectionReason: null,
+        islamicMode: islamicMode || false,
+      },
+      
+      // Payment Method
+      paymentMethod,
+      paymentDetails: paymentMethod === "bank" 
+        ? {
+            bankName,
+            accountNumber: bankAccNum,
+            accountName: bankAccName,
+            branch: bankBranch || null,
+            routingNumber: bankRouting || null,
+          }
+        : {
+            walletNumber,
+            accountName: walletName,
+          },
+      
+      // Profile Picture
+      profilePicture: null,
+      profilePicturePublicId: null,
+      
+      // Referral
+      referralCode: userReferralCode,
+      referredBy: referrerId,
+      referralBonusApplied: false,
+      
+      // Settings
+      marketing: marketing || false,
+      termsAccepted: terms,
+      withdrawalPolicyAccepted: withdrawalPolicy,
+      
+      // Account Status - ROLE FIELD ADDED HERE
+      role: "user",  // Default role for all new registrations
+      level: 1,
+      streak: 0,
+      totalSaved: 0,
+      totalDeposits: 0,
+      totalWithdrawals: 0,
+      
+      // Verification Flags
+      phoneVerified: true,
+      emailVerified: email ? false : true,
+      kycCompleted: false,
+      accountActive: false,
+      
+      // Timestamps
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastLogin: null,
+    };
+
+    const result = await usersCollection.insertOne(newUser);
+    const user = { ...newUser, _id: result.insertedId };
+
+    // Generate JWT token
+    const token = generateToken(user);
+
+    // Remove sensitive data
+    delete user.password;
+    delete user.pin;
+
+    return res.status(201).json({
+      success: true,
+      message: "Registration successful! Please complete KYC verification.",
+      data: {
+        token,
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          fullName: user.fullName,
+          role: user.role,
+          phone: user.phone,
+          email: user.email,
+          selectedPlan: user.selectedPlan,
+          kycStatus: user.kyc.status,
+          accountActive: user.accountActive,
+          referralCode: user.referralCode,
+          createdAt: user.createdAt,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Registration error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Registration failed",
+    });
+  }
+};
+
+// ==================== LOGIN ====================
+
+export const login = async (req, res) => {
+  try {
+    const { identifier, password } = req.body;
+
+    if (!identifier || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone/Email and password are required",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+
+    // Find user by phone or email
+    const user = await usersCollection.findOne({
+      $or: [
+        { phone: identifier },
+        { email: identifier },
+      ],
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    if (!user.password) {
+      return res.status(401).json({
+        success: false,
+        message: "This account uses social login. Please login with Google/Facebook.",
+      });
+    }
+
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    await usersCollection.updateOne(
+      { _id: user._id },
+      { $set: { lastLogin: new Date(), updatedAt: new Date() } }
+    );
+
+    const token = generateToken(user);
+
+    // Remove sensitive data
+    delete user.password;
+    delete user.pin;
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      data: {
+        token,
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          fullName: user.fullName,
+          role: user.role,
+          phone: user.phone,
+          email: user.email,
+          selectedPlan: user.selectedPlan,
+          kycStatus: user.kyc.status,
+          accountActive: user.accountActive,
+          level: user.level,
+          streak: user.streak,
+          totalSaved: user.totalSaved,
+          referralCode: user.referralCode,
+          profilePicture: user.profilePicture,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Login failed",
+    });
+  }
+};
+
+// ==================== GET CURRENT USER ====================
+
+export const getCurrentUser = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const usersCollection = db.collection("users");
+
+    const user = await usersCollection.findOne(
+      { _id: new ObjectId(userId) },
+      { projection: { password: 0, pin: 0 } }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        fullName: user.fullName,
+        role: user.role,
+        phone: user.phone,
+        email: user.email,
+        selectedPlan: user.selectedPlan,
+        kycStatus: user.kyc.status,
+        accountActive: user.accountActive,
+        level: user.level,
+        streak: user.streak,
+        totalSaved: user.totalSaved,
+        referralCode: user.referralCode,
+        profilePicture: user.profilePicture,
+        dob: user.dob,
+        gender: user.gender,
+        division: user.division,
+        district: user.district,
+        upazila: user.upazila,
+        occupation: user.occupation,
+        income: user.income,
+        village: user.village,
+        postOffice: user.postOffice,
+        postCode: user.postCode,
+        nominee: user.nominee,
+        paymentMethod: user.paymentMethod,
+        paymentDetails: user.paymentDetails,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        lastLogin: user.lastLogin,
+      },
+    });
+  } catch (error) {
+    console.error("Get current user error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get user",
+    });
+  }
+};
+
+// ==================== OTP SERVICES ====================
+
+export const sendPhoneOtp = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+    }
+
+    const otp = generateOTP();
+    
+    const otpCollection = db.collection("otps");
+    
+    await otpCollection.deleteMany({ phone, type: "phone_verification" });
+    
+    await otpCollection.insertOne({
+      phone,
+      otp,
+      type: "phone_verification",
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    });
+
+    if (process.env.NODE_ENV === "production") {
+      console.log(`[PRODUCTION] SMS OTP ${otp} sent to ${phone}`);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent successfully",
+      ...(process.env.NODE_ENV !== "production" && { otp }),
+    });
+  } catch (error) {
+    console.error("Send OTP error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to send OTP",
+    });
+  }
+};
+
+export const verifyPhoneOtp = async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+
+    if (!phone || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number and OTP are required",
+      });
+    }
+
+    const otpCollection = db.collection("otps");
+    
+    const otpRecord = await otpCollection.findOne({
+      phone,
+      otp,
+      type: "phone_verification",
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP",
+      });
+    }
+
+    await otpCollection.deleteOne({ _id: otpRecord._id });
+
+    return res.status(200).json({
+      success: true,
+      message: "Phone verified successfully",
+    });
+  } catch (error) {
+    console.error("Verify OTP error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "OTP verification failed",
+    });
+  }
+};
+
+export const sendEmailOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const otp = generateOTP();
+    
+    const otpCollection = db.collection("otps");
+    
+    await otpCollection.deleteMany({ email, type: "email_verification" });
+    
+    await otpCollection.insertOne({
+      email,
+      otp,
+      type: "email_verification",
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    });
+
+    if (process.env.NODE_ENV === "production") {
+      console.log(`[PRODUCTION] Email OTP ${otp} sent to ${email}`);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Email OTP sent successfully",
+      ...(process.env.NODE_ENV !== "production" && { otp }),
+    });
+  } catch (error) {
+    console.error("Send email OTP error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to send email OTP",
+    });
+  }
+};
+
+export const verifyEmailOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and OTP are required",
+      });
+    }
+
+    const otpCollection = db.collection("otps");
+    
+    const otpRecord = await otpCollection.findOne({
+      email,
+      otp,
+      type: "email_verification",
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP",
+      });
+    }
+
+    await otpCollection.deleteOne({ _id: otpRecord._id });
+
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully",
+    });
+  } catch (error) {
+    console.error("Verify email OTP error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Email verification failed",
+    });
+  }
+};
+
+// ==================== PROFILE & SETTINGS ====================
+
+export const updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { 
+      firstName, 
+      lastName, 
+      email, 
+      dob, 
+      gender, 
+      occupation, 
+      income, 
+      village, 
+      postOffice, 
+      postCode,
+      division,
+      district,
+      upazila
+    } = req.body;
+
+    const usersCollection = db.collection("users");
+
+    const updateData = {
+      updatedAt: new Date(),
+    };
+
+    if (firstName) updateData.firstName = firstName;
+    if (lastName) updateData.lastName = lastName;
+    if (firstName || lastName) updateData.fullName = `${firstName || req.user.firstName} ${lastName || req.user.lastName}`.trim();
+    if (email) updateData.email = email;
+    if (dob) updateData.dob = dob;
+    if (gender) updateData.gender = gender;
+    if (occupation) updateData.occupation = occupation;
+    if (income) updateData.income = income;
+    if (village) updateData.village = village;
+    if (postOffice) updateData.postOffice = postOffice;
+    if (postCode) updateData.postCode = postCode;
+    if (division) updateData.division = division;
+    if (district) updateData.district = district;
+    if (upazila) updateData.upazila = upazila;
+    
+    if (division || district || upazila || village || postOffice || postCode) {
+      updateData.address = {
+        division: division || req.user.division,
+        district: district || req.user.district,
+        upazila: upazila || req.user.upazila,
+        village: village || req.user.village,
+        postOffice: postOffice || req.user.postOffice,
+        postCode: postCode || req.user.postCode,
+      };
+    }
+
+    if (req.file) {
+      const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+      if (user?.profilePicturePublicId) {
+        try {
+          await deleteFromCloudinary(user.profilePicturePublicId, "image");
+        } catch (err) {
+          console.error("Failed to delete old profile picture:", err);
+        }
+      }
+
+      updateData.profilePicture = req.file.path;
+      updateData.profilePicturePublicId = req.file.filename;
+    }
+
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const updatedUser = await usersCollection.findOne(
+      { _id: new ObjectId(userId) },
+      { projection: { password: 0, pin: 0 } }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: updatedUser,
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update profile",
+    });
+  }
+};
+
+export const changePassword = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password and new password are required",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 8 characters",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+
+    const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (!user.password) {
+      return res.status(400).json({
+        success: false,
+        message: "This account uses social login. No password to change.",
+      });
+    }
+
+    const isValidPassword = await bcrypt.compare(currentPassword, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({
+        success: false,
+        message: "Current password is incorrect",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          password: hashedPassword,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    console.error("Change password error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to change password",
+    });
+  }
+};
+
+export const changePin = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { currentPin, newPin } = req.body;
+
+    if (!currentPin || !newPin) {
+      return res.status(400).json({
+        success: false,
+        message: "Current PIN and new PIN are required",
+      });
+    }
+
+    if (newPin.length !== 6 || !/^\d+$/.test(newPin)) {
+      return res.status(400).json({
+        success: false,
+        message: "PIN must be 6 digits",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+
+    const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const isValidPin = await bcrypt.compare(currentPin, user.pin);
+    if (!isValidPin) {
+      return res.status(401).json({
+        success: false,
+        message: "Current PIN is incorrect",
+      });
+    }
+
+    const hashedPin = await bcrypt.hash(newPin, 10);
+
+    await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          pin: hashedPin,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "PIN changed successfully",
+    });
+  } catch (error) {
+    console.error("Change PIN error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to change PIN",
+    });
+  }
+};
+
+export const updateNominee = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { nomineeFirstName, nomineeLastName, nomineeRelation, nomineePhone, nomineeNid, nomineeShare } = req.body;
+
+    const usersCollection = db.collection("users");
+
+    const updateData = {
+      "nominee.firstName": nomineeFirstName,
+      "nominee.lastName": nomineeLastName || null,
+      "nominee.fullName": `${nomineeFirstName} ${nomineeLastName || ""}`.trim(),
+      "nominee.relation": nomineeRelation,
+      "nominee.phone": nomineePhone,
+      "nominee.nid": nomineeNid || null,
+      "nominee.share": parseInt(nomineeShare) || 100,
+      updatedAt: new Date(),
+    };
+
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Nominee updated successfully",
+    });
+  } catch (error) {
+    console.error("Update nominee error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update nominee",
+    });
+  }
+};
+
+export const updatePaymentMethod = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { paymentMethod, walletNumber, walletName, bankName, bankAccNum, bankAccName, bankBranch, bankRouting } = req.body;
+
+    if (!paymentMethod) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment method is required",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+
+    const updateData = {
+      paymentMethod,
+      updatedAt: new Date(),
+    };
+
+    if (paymentMethod !== "bank") {
+      if (!walletNumber || !walletName) {
+        return res.status(400).json({
+          success: false,
+          message: "Wallet number and account name are required",
+        });
+      }
+      updateData.paymentDetails = {
+        walletNumber,
+        accountName: walletName,
+      };
+    } else {
+      if (!bankName || !bankAccNum || !bankAccName) {
+        return res.status(400).json({
+          success: false,
+          message: "Bank name, account number, and account name are required",
+        });
+      }
+      updateData.paymentDetails = {
+        bankName,
+        accountNumber: bankAccNum,
+        accountName: bankAccName,
+        branch: bankBranch || null,
+        routingNumber: bankRouting || null,
+      };
+    }
+
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment method updated successfully",
+    });
+  } catch (error) {
+    console.error("Update payment method error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update payment method",
+    });
+  }
+};
+
+export const uploadProfilePicture = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+
+    const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+    
+    if (user?.profilePicturePublicId) {
+      try {
+        await deleteFromCloudinary(user.profilePicturePublicId, "image");
+      } catch (err) {
+        console.error("Failed to delete old profile picture:", err);
+      }
+    }
+
+    await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          profilePicture: req.file.path,
+          profilePicturePublicId: req.file.filename,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile picture uploaded successfully",
+      data: {
+        url: req.file.path,
+        publicId: req.file.filename,
+      },
+    });
+  } catch (error) {
+    console.error("Upload profile picture error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to upload profile picture",
+    });
+  }
+};
+
+export const deleteProfilePicture = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const usersCollection = db.collection("users");
+
+    const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+
+    if (!user?.profilePicturePublicId) {
+      return res.status(404).json({
+        success: false,
+        message: "No profile picture found",
+      });
+    }
+
+    await deleteFromCloudinary(user.profilePicturePublicId, "image");
+
+    await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          profilePicture: null,
+          profilePicturePublicId: null,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile picture deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete profile picture error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to delete profile picture",
+    });
+  }
+};
+
+export const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const usersCollection = db.collection("users");
+
+    const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (user.profilePicturePublicId) {
+      try {
+        await deleteFromCloudinary(user.profilePicturePublicId, "image");
+      } catch (err) {
+        console.error("Failed to delete profile picture:", err);
+      }
+    }
+
+    await usersCollection.deleteOne({ _id: new ObjectId(userId) });
+
+    return res.status(200).json({
+      success: true,
+      message: "Account deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete account error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to delete account",
+    });
+  }
+};
