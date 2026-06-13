@@ -16,7 +16,7 @@ import deposit from "./src/routes/deposit/deposit.routes.js";
 
 app.use(
   cors({
-    origin: ["http://localhost:3000", "https://varsity-client.vercel.app"],
+    origin: ["http://localhost:3000", "https://amanah-savings.vercel.app"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: [
