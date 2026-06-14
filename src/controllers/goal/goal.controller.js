@@ -1,12 +1,11 @@
 // controllers/goal.controller.js
-import {db} from "../../database/db.js";
+import { db } from "../../database/db.js";
 import { ObjectId } from "mongodb";
 
 // Create a new goal
 export const createGoal = async (req, res) => {
   try {
     const userId = req.user._id;
-    console.log("user id", userId);
     const {
       goalType,
       goalName,
@@ -34,21 +33,24 @@ export const createGoal = async (req, res) => {
     }
 
     // Validate amounts
-    if (targetAmount <= 0) {
+    const targetAmountNum = parseFloat(targetAmount);
+    const monthlyDepositNum = parseFloat(monthlyDeposit);
+
+    if (targetAmountNum <= 0) {
       return res.status(400).json({
         success: false,
         message: "Target amount must be greater than 0",
       });
     }
 
-    if (monthlyDeposit <= 0) {
+    if (monthlyDepositNum <= 0) {
       return res.status(400).json({
         success: false,
         message: "Monthly deposit must be greater than 0",
       });
     }
 
-    if (monthlyDeposit > targetAmount) {
+    if (monthlyDepositNum > targetAmountNum) {
       return res.status(400).json({
         success: false,
         message: "Monthly deposit cannot exceed target amount",
@@ -56,7 +58,7 @@ export const createGoal = async (req, res) => {
     }
 
     // Calculate duration in months
-    const durationInMonths = Math.ceil(targetAmount / monthlyDeposit);
+    const durationInMonths = Math.ceil(targetAmountNum / monthlyDepositNum);
     const targetDateObj = new Date(targetDate);
     const currentDate = new Date();
 
@@ -89,14 +91,14 @@ export const createGoal = async (req, res) => {
       userId: new ObjectId(userId),
       goalType,
       goalName,
-      targetAmount: parseFloat(targetAmount),
-      monthlyDeposit: parseFloat(monthlyDeposit),
+      targetAmount: targetAmountNum,
+      monthlyDeposit: monthlyDepositNum,
       targetDate: targetDateObj,
       description: description || null,
       islamicMode: islamicMode || false,
       currentSaved: 0,
       progress: 0,
-      status: "active", // active, completed, paused, cancelled
+      status: "active",
       durationInMonths,
       estimatedCompletionDate,
       createdAt: new Date(),
@@ -104,6 +106,8 @@ export const createGoal = async (req, res) => {
     };
 
     const result = await goalsCollection.insertOne(newGoal);
+    
+    const goalId = result.insertedId;
 
     // Also update user's goals array
     await usersCollection.updateOne(
@@ -111,23 +115,24 @@ export const createGoal = async (req, res) => {
       {
         $push: {
           goals: {
-            goalId: result.insertedId,
+            goalId: goalId,
             goalName,
             goalType,
-            targetAmount: parseFloat(targetAmount),
-            monthlyDeposit: parseFloat(monthlyDeposit),
+            targetAmount: targetAmountNum,
+            monthlyDeposit: monthlyDepositNum,
             currentSaved: 0,
             progress: 0,
             status: "active",
             targetDate: targetDateObj,
             estimatedCompletionDate,
             createdAt: new Date(),
+            updatedAt: new Date(),
           },
         },
       }
     );
 
-    const goal = { ...newGoal, _id: result.insertedId };
+    const goal = { ...newGoal, _id: goalId };
 
     return res.status(201).json({
       success: true,
@@ -283,12 +288,12 @@ export const updateGoal = async (req, res) => {
       updateData.targetAmount = newTargetAmount;
       
       // Recalculate duration
-      const monthlyDepositValue = monthlyDeposit || existingGoal.monthlyDeposit;
+      const monthlyDepositValue = monthlyDeposit ? parseFloat(monthlyDeposit) : existingGoal.monthlyDeposit;
       updateData.durationInMonths = Math.ceil(newTargetAmount / monthlyDepositValue);
       
       // Recalculate progress
       const currentSaved = existingGoal.currentSaved;
-      updateData.progress = Math.round((currentSaved / newTargetAmount) * 100);
+      updateData.progress = Math.min(Math.round((currentSaved / newTargetAmount) * 100), 100);
     }
 
     // Update monthly deposit if provided
@@ -303,7 +308,7 @@ export const updateGoal = async (req, res) => {
       updateData.monthlyDeposit = newMonthlyDeposit;
       
       // Recalculate duration
-      const targetAmountValue = targetAmount || existingGoal.targetAmount;
+      const targetAmountValue = targetAmount ? parseFloat(targetAmount) : existingGoal.targetAmount;
       updateData.durationInMonths = Math.ceil(targetAmountValue / newMonthlyDeposit);
     }
 
@@ -321,31 +326,26 @@ export const updateGoal = async (req, res) => {
 
     updateData.updatedAt = new Date();
 
-    const result = await goalsCollection.updateOne(
+    await goalsCollection.updateOne(
       { _id: new ObjectId(id), userId: new ObjectId(userId) },
       { $set: updateData }
     );
 
     // Update user's goals array
-    await usersCollection.updateOne(
-      { _id: new ObjectId(userId), "goals.goalId": new ObjectId(id) },
-      {
-        $set: {
-          "goals.$.goalName": updateData.goalName || existingGoal.goalName,
-          "goals.$.targetAmount": updateData.targetAmount || existingGoal.targetAmount,
-          "goals.$.monthlyDeposit": updateData.monthlyDeposit || existingGoal.monthlyDeposit,
-          "goals.$.status": updateData.status || existingGoal.status,
-          "goals.$.progress": updateData.progress || existingGoal.progress,
-          "goals.$.targetDate": updateData.targetDate || existingGoal.targetDate,
-        },
-      }
-    );
-
-    if (result.modifiedCount === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No changes made to the goal",
-      });
+    const userUpdateData = {};
+    if (updateData.goalName) userUpdateData["goals.$.goalName"] = updateData.goalName;
+    if (updateData.targetAmount) userUpdateData["goals.$.targetAmount"] = updateData.targetAmount;
+    if (updateData.monthlyDeposit) userUpdateData["goals.$.monthlyDeposit"] = updateData.monthlyDeposit;
+    if (updateData.status) userUpdateData["goals.$.status"] = updateData.status;
+    if (updateData.progress) userUpdateData["goals.$.progress"] = updateData.progress;
+    if (updateData.targetDate) userUpdateData["goals.$.targetDate"] = updateData.targetDate;
+    
+    if (Object.keys(userUpdateData).length > 0) {
+      userUpdateData["goals.$.updatedAt"] = new Date();
+      await usersCollection.updateOne(
+        { _id: new ObjectId(userId), "goals.goalId": new ObjectId(id) },
+        { $set: userUpdateData }
+      );
     }
 
     const updatedGoal = await goalsCollection.findOne({
@@ -381,6 +381,7 @@ export const deleteGoal = async (req, res) => {
 
     const goalsCollection = db.collection("goals");
     const usersCollection = db.collection("users");
+    const depositsCollection = db.collection("deposits");
 
     const goal = await goalsCollection.findOne({
       _id: new ObjectId(id),
@@ -402,7 +403,20 @@ export const deleteGoal = async (req, res) => {
       });
     }
 
-    const result = await goalsCollection.deleteOne({
+    // Check if there are any pending deposits
+    const pendingDeposits = await depositsCollection.findOne({
+      goalId: new ObjectId(id),
+      status: "pending"
+    });
+
+    if (pendingDeposits) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot delete goal with pending deposit requests",
+      });
+    }
+
+    await goalsCollection.deleteOne({
       _id: new ObjectId(id),
       userId: new ObjectId(userId),
     });
@@ -412,13 +426,6 @@ export const deleteGoal = async (req, res) => {
       { _id: new ObjectId(userId) },
       { $pull: { goals: { goalId: new ObjectId(id) } } }
     );
-
-    if (result.deletedCount === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Goal not found",
-      });
-    }
 
     return res.status(200).json({
       success: true,
@@ -438,7 +445,7 @@ export const toggleGoalStatus = async (req, res) => {
   try {
     const userId = req.user._id;
     const { id } = req.params;
-    const { status } = req.body; // 'active' or 'paused'
+    const { status } = req.body;
 
     if (!ObjectId.isValid(id)) {
       return res.status(400).json({
@@ -492,6 +499,7 @@ export const toggleGoalStatus = async (req, res) => {
       {
         $set: {
           "goals.$.status": status,
+          "goals.$.updatedAt": new Date(),
         },
       }
     );
@@ -525,9 +533,9 @@ export const getGoalStatistics = async (req, res) => {
     const activeGoals = goals.filter(g => g.status === "active").length;
     const completedGoals = goals.filter(g => g.status === "completed").length;
     const pausedGoals = goals.filter(g => g.status === "paused").length;
-    const totalSaved = goals.reduce((sum, g) => sum + g.currentSaved, 0);
+    const totalSaved = goals.reduce((sum, g) => sum + (g.currentSaved || 0), 0);
     const totalTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
-    const overallProgress = totalTarget > 0 ? Math.round((totalSaved / totalTarget) * 100) : 0;
+    const overallProgress = totalTarget > 0 ? Math.min(Math.round((totalSaved / totalTarget) * 100), 100) : 0;
 
     return res.status(200).json({
       success: true,

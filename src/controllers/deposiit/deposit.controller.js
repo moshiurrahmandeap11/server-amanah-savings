@@ -1,9 +1,6 @@
 // controllers/deposit/deposit.controller.js
 import { db } from "../../database/db.js";
 import { ObjectId } from "mongodb";
-import { deleteFromCloudinary } from "../../middlewares/upload.js";
-
-
 
 export const uploadDepositScreenshot = async (req, res) => {
   try {
@@ -16,8 +13,6 @@ export const uploadDepositScreenshot = async (req, res) => {
       });
     }
 
-    // File already uploaded by middleware
-    // You can store temporarily or return directly
     return res.status(200).json({
       success: true,
       message: "Screenshot uploaded successfully",
@@ -34,7 +29,6 @@ export const uploadDepositScreenshot = async (req, res) => {
     });
   }
 };
-
 
 // Create a new deposit request
 export const createDeposit = async (req, res) => {
@@ -118,20 +112,23 @@ export const createDeposit = async (req, res) => {
       });
     }
 
+    // Convert to number
+    const depositAmountNum = parseFloat(depositAmount);
+    
     // Create deposit object
     const newDeposit = {
       userId: new ObjectId(userId),
       goalId: new ObjectId(goalId),
       goalName: goal.goalName,
       goalType: goal.goalType,
-      depositAmount: parseFloat(depositAmount),
+      depositAmount: depositAmountNum,
       paymentMethod,
       transactionReference: transactionReference || null,
       screenshot: {
         url: screenshotUrl,
         publicId: screenshotPublicId,
       },
-      status: "pending", // pending, approved, rejected
+      status: "pending",
       remarks: null,
       approvedBy: null,
       approvedAt: null,
@@ -140,7 +137,6 @@ export const createDeposit = async (req, res) => {
     };
 
     const result = await depositsCollection.insertOne(newDeposit);
-
     const deposit = { ...newDeposit, _id: result.insertedId };
 
     return res.status(201).json({
@@ -156,7 +152,6 @@ export const createDeposit = async (req, res) => {
     });
   }
 };
-
 
 // Get user's deposit history
 export const getUserDeposits = async (req, res) => {
@@ -268,7 +263,6 @@ export const getAllDeposits = async (req, res) => {
     const { status, page = 1, limit = 20 } = req.query;
 
     const depositsCollection = db.collection("deposits");
-    const usersCollection = db.collection("users");
     
     const query = {};
     if (status && status !== "all") {
@@ -359,7 +353,8 @@ export const getAllDeposits = async (req, res) => {
   }
 };
 
-// Admin: Approve deposit
+// Admin: Approve deposit (FIXED VERSION)
+// Admin: Approve deposit (COMPLETELY FIXED VERSION)
 export const approveDeposit = async (req, res) => {
   try {
     const adminId = req.user._id;
@@ -377,6 +372,7 @@ export const approveDeposit = async (req, res) => {
     const goalsCollection = db.collection("goals");
     const usersCollection = db.collection("users");
 
+    // Get the deposit
     const deposit = await depositsCollection.findOne({
       _id: new ObjectId(id),
     });
@@ -395,8 +391,34 @@ export const approveDeposit = async (req, res) => {
       });
     }
 
+    // Get the goal
+    const goal = await goalsCollection.findOne({
+      _id: deposit.goalId,
+    });
+
+    if (!goal) {
+      return res.status(404).json({
+        success: false,
+        message: "Goal not found for this deposit",
+      });
+    }
+
+    // Calculate new values
+    const oldCurrentSaved = goal.currentSaved || 0;
+    const newCurrentSaved = oldCurrentSaved + deposit.depositAmount;
+    const newProgress = Math.min(Math.round((newCurrentSaved / goal.targetAmount) * 100), 100);
+    
+    console.log("=== DEPOSIT APPROVAL DEBUG ===");
+    console.log("Deposit ID:", id);
+    console.log("Goal ID:", deposit.goalId);
+    console.log("Old Current Saved:", oldCurrentSaved);
+    console.log("Deposit Amount:", deposit.depositAmount);
+    console.log("New Current Saved:", newCurrentSaved);
+    console.log("Target Amount:", goal.targetAmount);
+    console.log("New Progress:", newProgress);
+    
     // Update deposit status
-    await depositsCollection.updateOne(
+    const depositUpdate = await depositsCollection.updateOne(
       { _id: new ObjectId(id) },
       {
         $set: {
@@ -408,56 +430,98 @@ export const approveDeposit = async (req, res) => {
         },
       }
     );
+    
+    console.log("Deposit update result:", depositUpdate);
 
-    // Update goal's currentSaved and progress
-    const goal = await goalsCollection.findOne({
-      _id: deposit.goalId,
-    });
+    // Update goal in goals collection
+    const goalUpdateData = {
+      currentSaved: newCurrentSaved,
+      progress: newProgress,
+      updatedAt: new Date(),
+    };
+    
+    if (newCurrentSaved >= goal.targetAmount) {
+      goalUpdateData.status = "completed";
+      goalUpdateData.progress = 100;
+    }
+    
+    const goalUpdate = await goalsCollection.updateOne(
+      { _id: deposit.goalId },
+      { $set: goalUpdateData }
+    );
+    
+    console.log("Goal update result:", goalUpdate);
+    console.log("Goal update data:", goalUpdateData);
 
-    if (goal) {
-      const newCurrentSaved = (goal.currentSaved || 0) + deposit.depositAmount;
-      const newProgress = Math.round((newCurrentSaved / goal.targetAmount) * 100);
-      
-      await goalsCollection.updateOne(
-        { _id: deposit.goalId },
-        {
-          $inc: { currentSaved: deposit.depositAmount },
-          $set: {
-            progress: newProgress,
-            updatedAt: new Date(),
-          },
+    // Update user's goals array
+    const userGoalUpdate = await usersCollection.updateOne(
+      { 
+        _id: deposit.userId,
+        "goals.goalId": deposit.goalId 
+      },
+      {
+        $set: {
+          "goals.$.currentSaved": newCurrentSaved,
+          "goals.$.progress": newProgress,
+          "goals.$.status": newCurrentSaved >= goal.targetAmount ? "completed" : "active",
+          "goals.$.updatedAt": new Date(),
         }
-      );
-
-      // Check if goal is completed
-      if (newCurrentSaved >= goal.targetAmount) {
-        await goalsCollection.updateOne(
-          { _id: deposit.goalId },
-          {
-            $set: {
-              status: "completed",
-              progress: 100,
-            },
-          }
-        );
       }
-
-      // Update user's goals array
+    );
+    
+    console.log("User goal update result:", userGoalUpdate);
+    
+    // If goal not found in user's array, push it
+    if (userGoalUpdate.matchedCount === 0) {
+      console.log("Goal not found in user array, pushing new entry...");
       await usersCollection.updateOne(
-        { _id: deposit.userId, "goals.goalId": deposit.goalId },
+        { _id: deposit.userId },
         {
-          $inc: { "goals.$.currentSaved": deposit.depositAmount },
-          $set: {
-            "goals.$.progress": newProgress,
-            "goals.$.status": newCurrentSaved >= goal.targetAmount ? "completed" : "active",
-          },
+          $push: {
+            goals: {
+              goalId: deposit.goalId,
+              goalName: goal.goalName,
+              goalType: goal.goalType,
+              targetAmount: goal.targetAmount,
+              monthlyDeposit: goal.monthlyDeposit,
+              currentSaved: newCurrentSaved,
+              progress: newProgress,
+              status: newCurrentSaved >= goal.targetAmount ? "completed" : "active",
+              targetDate: goal.targetDate,
+              estimatedCompletionDate: goal.estimatedCompletionDate,
+              createdAt: goal.createdAt || new Date(),
+              updatedAt: new Date(),
+            }
+          }
         }
       );
+    }
+    
+    // Verify the update
+    const verifyGoal = await goalsCollection.findOne({ _id: deposit.goalId });
+    console.log("VERIFICATION - Goal after update:", {
+      currentSaved: verifyGoal.currentSaved,
+      progress: verifyGoal.progress,
+      status: verifyGoal.status
+    });
+    
+    if (verifyGoal.currentSaved !== newCurrentSaved) {
+      console.error("WARNING: Goal currentSaved did not update correctly!");
+      console.error(`Expected: ${newCurrentSaved}, Got: ${verifyGoal.currentSaved}`);
     }
 
     return res.status(200).json({
       success: true,
       message: "Deposit approved successfully",
+      data: {
+        deposit: { ...deposit, status: "approved" },
+        goal: {
+          oldCurrentSaved,
+          newCurrentSaved,
+          progress: newProgress,
+          completed: newCurrentSaved >= goal.targetAmount
+        }
+      }
     });
   } catch (error) {
     console.error("Approve deposit error:", error);
@@ -570,6 +634,63 @@ export const getDepositStatistics = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch statistics",
+    });
+  }
+};
+
+// Debug endpoint to check goal currentSaved
+export const debugGoalDeposit = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { goalId } = req.params;
+
+    const goalsCollection = db.collection("goals");
+    const depositsCollection = db.collection("deposits");
+    const usersCollection = db.collection("users");
+
+    const goal = await goalsCollection.findOne({
+      _id: new ObjectId(goalId),
+      userId: new ObjectId(userId),
+    });
+
+    const approvedDeposits = await depositsCollection
+      .find({
+        goalId: new ObjectId(goalId),
+        status: "approved"
+      })
+      .toArray();
+
+    const totalApprovedDeposits = approvedDeposits.reduce(
+      (sum, d) => sum + d.depositAmount,
+      0
+    );
+
+    const user = await usersCollection.findOne(
+      { 
+        _id: new ObjectId(userId),
+        "goals.goalId": new ObjectId(goalId)
+      },
+      { projection: { "goals.$": 1 } }
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        goal: {
+          currentSaved: goal?.currentSaved || 0,
+          progress: goal?.progress || 0,
+          targetAmount: goal?.targetAmount || 0,
+        },
+        totalApprovedDeposits,
+        userGoalFromArray: user?.goals?.[0],
+        isSynced: goal?.currentSaved === totalApprovedDeposits,
+      },
+    });
+  } catch (error) {
+    console.error("Debug goal error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };

@@ -18,12 +18,12 @@ const router = Router();
 router.use(verifyToken);
 
 // Goal CRUD operations
-router.post("/", createGoal);                    // Create new goal
-router.get("/", getUserGoals);                   // Get all user goals
-router.get("/statistics", getGoalStatistics);    // Get goal statistics
-router.get("/:id", getGoalById);                 // Get single goal
-router.put("/:id", updateGoal);                  // Update goal
-router.delete("/:id", deleteGoal);               // Delete goal
-router.patch("/:id/toggle-status", toggleGoalStatus); // Pause/resume goal
+router.post("/", createGoal);
+router.get("/", getUserGoals);
+router.get("/statistics", getGoalStatistics);
+router.get("/:id", getGoalById);
+router.put("/:id", updateGoal);
+router.delete("/:id", deleteGoal);
+router.patch("/:id/toggle-status", toggleGoalStatus);
 
 export default router;

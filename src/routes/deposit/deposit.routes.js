@@ -8,10 +8,11 @@ import {
   approveDeposit,
   rejectDeposit,
   getDepositStatistics,
-  uploadDepositScreenshot,  // Add this import
+  uploadDepositScreenshot,
+  debugGoalDeposit,
 } from "../../controllers/deposiit/deposit.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
-import { uploadSingle } from "../../middlewares/upload.js";  // Add this import
+import { uploadSingle } from "../../middlewares/upload.js";
 
 const router = Router();
 
@@ -19,23 +20,25 @@ const router = Router();
 // All deposit routes require authentication
 router.use(verifyToken);
 
-// Screenshot upload route (similar to profile picture)
+// Screenshot upload route
 router.post(
   "/screenshot",
-  verifyToken,
-  uploadSingle("deposit_screenshots", "screenshot"),  // folder: deposit_screenshots, field: screenshot
+  uploadSingle("deposit_screenshots", "screenshot"),
   uploadDepositScreenshot
 );
 
 // User routes
-router.post("/", createDeposit);                    // Create deposit request
-router.get("/", getUserDeposits);                   // Get user's deposit history
-router.get("/statistics", getDepositStatistics);    // Get deposit statistics
-router.get("/:id", getDepositById);                 // Get single deposit
+router.post("/", createDeposit);
+router.get("/", getUserDeposits);
+router.get("/statistics", getDepositStatistics);
+router.get("/:id", getDepositById);
 
-// Admin routes (with isAdmin check in controller)
-router.get("/admin/all", getAllDeposits);           // Get all deposits (admin only)
-router.patch("/:id/approve", approveDeposit);       // Approve deposit
-router.patch("/:id/reject", rejectDeposit);         // Reject deposit
+// Debug route (remove in production)
+router.get("/debug/goal/:goalId", debugGoalDeposit);
+
+// Admin routes
+router.get("/admin/all", getAllDeposits);
+router.patch("/:id/approve", approveDeposit);
+router.patch("/:id/reject", rejectDeposit);
 
 export default router;

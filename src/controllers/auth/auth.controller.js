@@ -368,6 +368,8 @@ export const register = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { identifier, password } = req.body;
+    const ip = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers["user-agent"];
 
     if (!identifier || !password) {
       return res.status(400).json({
@@ -377,6 +379,8 @@ export const login = async (req, res) => {
     }
 
     const usersCollection = db.collection("users");
+    const loginHistoryCollection = db.collection("login_history");
+    const sessionsCollection = db.collection("user_sessions");
 
     // Find user by phone or email
     const user = await usersCollection.findOne({
@@ -387,6 +391,17 @@ export const login = async (req, res) => {
     });
 
     if (!user) {
+      // Log failed login attempt
+      await loginHistoryCollection.insertOne({
+        userId: null,
+        identifier,
+        success: false,
+        failureReason: "User not found",
+        ip,
+        userAgent,
+        loginTime: new Date(),
+      });
+      
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
@@ -394,6 +409,16 @@ export const login = async (req, res) => {
     }
 
     if (!user.password) {
+      await loginHistoryCollection.insertOne({
+        userId: user._id,
+        identifier,
+        success: false,
+        failureReason: "Social login account",
+        ip,
+        userAgent,
+        loginTime: new Date(),
+      });
+      
       return res.status(401).json({
         success: false,
         message: "This account uses social login. Please login with Google/Facebook.",
@@ -402,18 +427,76 @@ export const login = async (req, res) => {
 
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
+      await loginHistoryCollection.insertOne({
+        userId: user._id,
+        identifier,
+        success: false,
+        failureReason: "Invalid password",
+        ip,
+        userAgent,
+        loginTime: new Date(),
+      });
+      
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
       });
     }
 
+    // Generate token
+    const token = generateToken(user);
+
+    // Get device info
+    const deviceInfo = getDeviceInfo(userAgent);
+    
+    // Get location (you can integrate with IP geolocation API)
+    const location = await getLocationFromIP(ip);
+
+    // Save session
+    const session = {
+      userId: user._id,
+      token,
+      device: deviceInfo.device,
+      deviceName: deviceInfo.deviceName,
+      browser: deviceInfo.browser,
+      os: deviceInfo.os,
+      ip,
+      location: location,
+      isActive: true,
+      lastActivity: new Date(),
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+    };
+    
+    await sessionsCollection.insertOne(session);
+
+    // Log successful login
+    await loginHistoryCollection.insertOne({
+      userId: user._id,
+      identifier,
+      success: true,
+      device: deviceInfo.device,
+      deviceName: deviceInfo.deviceName,
+      browser: deviceInfo.browser,
+      os: deviceInfo.os,
+      ip,
+      location: location,
+      userAgent,
+      loginTime: new Date(),
+    });
+
+    // Update user's last login
     await usersCollection.updateOne(
       { _id: user._id },
-      { $set: { lastLogin: new Date(), updatedAt: new Date() } }
+      { 
+        $set: { 
+          lastLogin: new Date(),
+          lastLoginIp: ip,
+          lastLoginDevice: deviceInfo.device,
+          updatedAt: new Date() 
+        } 
+      }
     );
-
-    const token = generateToken(user);
 
     // Remove sensitive data
     delete user.password;
@@ -450,6 +533,57 @@ export const login = async (req, res) => {
       message: error.message || "Login failed",
     });
   }
+};
+
+// Helper functions for device detection
+const getDeviceInfo = (userAgent) => {
+  const ua = userAgent || "";
+  let device = "Desktop";
+  let deviceName = "Computer";
+  let browser = "Unknown";
+  let os = "Unknown";
+
+  // Detect device type
+  if (/Mobile|Android|iPhone|iPad|iPod/i.test(ua)) {
+    device = "Mobile";
+    if (/iPhone/i.test(ua)) deviceName = "iPhone";
+    else if (/iPad/i.test(ua)) deviceName = "iPad";
+    else if (/Android/i.test(ua)) deviceName = "Android Phone";
+    else deviceName = "Mobile Device";
+  } else if (/Tablet/i.test(ua)) {
+    device = "Tablet";
+    deviceName = "Tablet";
+  } else if (/Windows/i.test(ua)) {
+    device = "Desktop";
+    deviceName = "Windows PC";
+  } else if (/Mac/i.test(ua)) {
+    device = "Desktop";
+    deviceName = "Mac";
+  }
+
+  // Detect browser
+  if (/Chrome/i.test(ua) && !/Edg/i.test(ua)) browser = "Chrome";
+  else if (/Firefox/i.test(ua)) browser = "Firefox";
+  else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) browser = "Safari";
+  else if (/Edg/i.test(ua)) browser = "Edge";
+  else if (/Opera|OPR/i.test(ua)) browser = "Opera";
+
+  // Detect OS
+  if (/Windows NT 10.0/i.test(ua)) os = "Windows 10";
+  else if (/Windows NT 6.1/i.test(ua)) os = "Windows 7";
+  else if (/Mac OS X/i.test(ua)) os = "macOS";
+  else if (/Android/i.test(ua)) os = "Android";
+  else if (/iOS|iPhone|iPad/i.test(ua)) os = "iOS";
+  else if (/Linux/i.test(ua)) os = "Linux";
+
+  return { device, deviceName, browser, os };
+};
+
+// Get location from IP (simplified - you can integrate with ipapi or similar)
+const getLocationFromIP = async (ip) => {
+  // For now, return a default location
+  // You can integrate with ipapi.co or similar service
+  return "Dhaka, Bangladesh";
 };
 
 // ==================== GET CURRENT USER ====================
@@ -1161,5 +1295,207 @@ export const deleteAccount = async (req, res) => {
       success: false,
       message: error.message || "Failed to delete account",
     });
+  }
+};
+
+// Get active sessions
+export const getActiveSessions = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const sessionsCollection = db.collection("user_sessions");
+    
+    const sessions = await sessionsCollection
+      .find({
+        userId: new ObjectId(userId),
+        isActive: true,
+        expiresAt: { $gt: new Date() }
+      })
+      .sort({ lastActivity: -1 })
+      .toArray();
+
+    // Format sessions for frontend
+    const formattedSessions = sessions.map(session => ({
+      id: session._id,
+      device: getDeviceIcon(session.device),
+      deviceType: session.device,
+      name: session.deviceName || `${session.device} Device`,
+      location: session.location || "Unknown Location",
+      ip: session.ip,
+      time: getTimeAgo(session.lastActivity),
+      isCurrent: session.token === req.headers.authorization?.split(" ")[1],
+      lastActivity: session.lastActivity,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: formattedSessions,
+    });
+  } catch (error) {
+    console.error("Get active sessions error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch active sessions",
+    });
+  }
+};
+
+// Revoke a session (logout from specific device)
+export const revokeSession = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sessionId } = req.params;
+
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Session ID is required",
+      });
+    }
+
+    const sessionsCollection = db.collection("user_sessions");
+    
+    const session = await sessionsCollection.findOne({
+      _id: new ObjectId(sessionId),
+      userId: new ObjectId(userId),
+    });
+
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: "Session not found",
+      });
+    }
+
+    // Don't allow revoking current session
+    const currentToken = req.headers.authorization?.split(" ")[1];
+    if (session.token === currentToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot revoke current session. Use logout instead.",
+      });
+    }
+
+    await sessionsCollection.updateOne(
+      { _id: new ObjectId(sessionId) },
+      {
+        $set: {
+          isActive: false,
+          revokedAt: new Date(),
+          revokedBy: new ObjectId(userId),
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Session revoked successfully",
+    });
+  } catch (error) {
+    console.error("Revoke session error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to revoke session",
+    });
+  }
+};
+
+// Get login history
+export const getLoginHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 20 } = req.query;
+
+    const loginHistoryCollection = db.collection("login_history");
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const limitNum = parseInt(limit);
+
+    const history = await loginHistoryCollection
+      .find({ userId: new ObjectId(userId) })
+      .sort({ loginTime: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .toArray();
+
+    const total = await loginHistoryCollection.countDocuments({
+      userId: new ObjectId(userId),
+    });
+
+    const formattedHistory = history.map(entry => ({
+      id: entry._id,
+      success: entry.success,
+      name: entry.success ? "Successful Login" : "Failed Login Attempt",
+      time: formatLoginTime(entry.loginTime),
+      device: entry.device,
+      location: entry.location,
+      ip: entry.ip,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        history: formattedHistory,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limitNum),
+          totalItems: total,
+          itemsPerPage: limitNum,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get login history error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch login history",
+    });
+  }
+};
+
+
+// Helper functions
+const getDeviceIcon = (device) => {
+  const deviceLower = device?.toLowerCase() || "";
+  if (deviceLower.includes("android")) return "📱";
+  if (deviceLower.includes("ios") || deviceLower.includes("iphone")) return "🍎";
+  if (deviceLower.includes("windows")) return "💻";
+  if (deviceLower.includes("mac")) return "🖥️";
+  if (deviceLower.includes("linux")) return "🐧";
+  return "🌐";
+};
+
+const getTimeAgo = (date) => {
+  if (!date) return "Unknown";
+  const now = new Date();
+  const diff = now - new Date(date);
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (minutes < 1) return "Active now";
+  if (minutes < 60) return `${minutes} min ago`;
+  if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+  if (days < 7) return `${days} day${days > 1 ? 's' : ''} ago`;
+  return new Date(date).toLocaleDateString();
+};
+
+const formatLoginTime = (date) => {
+  if (!date) return "Unknown";
+  const now = new Date();
+  const loginDate = new Date(date);
+  const diff = now - loginDate;
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = loginDate.getHours();
+  const minutes = loginDate.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const formattedHours = hours % 12 || 12;
+  
+  if (days === 0) {
+    return `Today, ${formattedHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+  } else if (days === 1) {
+    return `Yesterday, ${formattedHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+  } else {
+    return `${days} days ago, ${formattedHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
   }
 };
