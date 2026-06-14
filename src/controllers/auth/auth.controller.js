@@ -20,12 +20,9 @@ const generateToken = (user) => {
   return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "30d" });
 };
 
-// Helper to generate OTP (for development)
+// Helper to generate OTP
 const generateOTP = () => {
-  if (process.env.NODE_ENV === "production") {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  }
-  return process.env.DEV_OTP || "123456";
+  return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
 // ==================== REGISTRATION ====================
