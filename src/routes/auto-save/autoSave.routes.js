@@ -12,6 +12,7 @@ import {
   getAutoSaveStatistics,
 } from "../../controllers/auto-save/autoSave.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
+import verifyAdmin from "../../middlewares/verifyAdmin.js";
 
 const router = Router();
 
@@ -30,6 +31,6 @@ router.patch("/:id/resume", resumeAutoSaveRule);
 router.delete("/:id", deleteAutoSaveRule);
 
 // Admin routes
-router.get("/admin/all", getAllAutoSaveRules);
+router.get("/admin/all", verifyAdmin, getAllAutoSaveRules);
 
 export default router;

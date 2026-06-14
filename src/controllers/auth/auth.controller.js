@@ -1,3 +1,4 @@
+import { sendOtpEmail } from "../../utils/emailService.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
@@ -33,7 +34,7 @@ export const register = async (req, res) => {
   try {
     console.log("=== Received Registration Data ===");
     console.log("Request Body:", req.body);
-    
+
     const {
       // Step 1 - Account
       firstName,
@@ -41,7 +42,7 @@ export const register = async (req, res) => {
       phone,
       email,
       password,
-      
+
       // Step 4 - Personal Info
       dob,
       gender,
@@ -54,7 +55,7 @@ export const register = async (req, res) => {
       village,
       postOffice,
       postCode,
-      
+
       // Step 5 - Nominee
       nomineeFirstName,
       nomineeLastName,
@@ -62,21 +63,21 @@ export const register = async (req, res) => {
       nomineePhone,
       nomineeNid,
       nomineeShare,
-      
+
       // Step 6 - Plan & Goal
       selectedPlan,
       goalType,
       targetAmount,
       monthlyDeposit,
       duration,
-      
+
       // Step 7 - PIN
       pin,
-      
+
       // Step 8 - KYC
       nidNumber,
       islamicMode,
-      
+
       // Step 9 - Payment
       paymentMethod,
       walletNumber,
@@ -86,7 +87,7 @@ export const register = async (req, res) => {
       bankAccName,
       bankBranch,
       bankRouting,
-      
+
       // Agreements
       terms,
       withdrawalPolicy,
@@ -184,9 +185,10 @@ export const register = async (req, res) => {
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: existingUser.phone === phone 
-          ? "Phone number already registered" 
-          : "Email already registered",
+        message:
+          existingUser.phone === phone
+            ? "Phone number already registered"
+            : "Email already registered",
       });
     }
 
@@ -203,7 +205,9 @@ export const register = async (req, res) => {
     // Check if referral code is valid
     let referrerId = null;
     if (referralCode) {
-      const referrer = await usersCollection.findOne({ referralCode: referralCode.toUpperCase() });
+      const referrer = await usersCollection.findOne({
+        referralCode: referralCode.toUpperCase(),
+      });
       if (referrer) {
         referrerId = referrer._id;
       }
@@ -219,7 +223,7 @@ export const register = async (req, res) => {
       email: email || null,
       password: hashedPassword,
       pin: hashedPin,
-      
+
       // Personal Details
       dob,
       gender: gender || null,
@@ -231,7 +235,7 @@ export const register = async (req, res) => {
       village: village || null,
       postOffice: postOffice || null,
       postCode: postCode || null,
-      
+
       // Address
       address: {
         division,
@@ -241,7 +245,7 @@ export const register = async (req, res) => {
         postOffice: postOffice || null,
         postCode: postCode || null,
       },
-      
+
       // Nominee Information
       nominee: {
         firstName: nomineeFirstName,
@@ -252,7 +256,7 @@ export const register = async (req, res) => {
         nid: nomineeNid || null,
         share: parseInt(nomineeShare) || 100,
       },
-      
+
       // Plan & Goal
       selectedPlan,
       goal: {
@@ -263,7 +267,7 @@ export const register = async (req, res) => {
         currentSaved: 0,
         progress: 0,
       },
-      
+
       // KYC
       kyc: {
         nidNumber,
@@ -273,50 +277,51 @@ export const register = async (req, res) => {
         rejectionReason: null,
         islamicMode: islamicMode || false,
       },
-      
+
       // Payment Method
       paymentMethod,
-      paymentDetails: paymentMethod === "bank" 
-        ? {
-            bankName,
-            accountNumber: bankAccNum,
-            accountName: bankAccName,
-            branch: bankBranch || null,
-            routingNumber: bankRouting || null,
-          }
-        : {
-            walletNumber,
-            accountName: walletName,
-          },
-      
+      paymentDetails:
+        paymentMethod === "bank"
+          ? {
+              bankName,
+              accountNumber: bankAccNum,
+              accountName: bankAccName,
+              branch: bankBranch || null,
+              routingNumber: bankRouting || null,
+            }
+          : {
+              walletNumber,
+              accountName: walletName,
+            },
+
       // Profile Picture
       profilePicture: null,
       profilePicturePublicId: null,
-      
+
       // Referral
       referralCode: userReferralCode,
       referredBy: referrerId,
       referralBonusApplied: false,
-      
+
       // Settings
       marketing: marketing || false,
       termsAccepted: terms,
       withdrawalPolicyAccepted: withdrawalPolicy,
-      
+
       // Account Status - ROLE FIELD ADDED HERE
-      role: "user",  // Default role for all new registrations
+      role: "user", // Default role for all new registrations
       level: 1,
       streak: 0,
       totalSaved: 0,
       totalDeposits: 0,
       totalWithdrawals: 0,
-      
+
       // Verification Flags
       phoneVerified: true,
       emailVerified: email ? false : true,
       kycCompleted: false,
       accountActive: false,
-      
+
       // Timestamps
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -384,10 +389,7 @@ export const login = async (req, res) => {
 
     // Find user by phone or email
     const user = await usersCollection.findOne({
-      $or: [
-        { phone: identifier },
-        { email: identifier },
-      ],
+      $or: [{ phone: identifier }, { email: identifier }],
     });
 
     if (!user) {
@@ -401,7 +403,7 @@ export const login = async (req, res) => {
         userAgent,
         loginTime: new Date(),
       });
-      
+
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
@@ -418,10 +420,11 @@ export const login = async (req, res) => {
         userAgent,
         loginTime: new Date(),
       });
-      
+
       return res.status(401).json({
         success: false,
-        message: "This account uses social login. Please login with Google/Facebook.",
+        message:
+          "This account uses social login. Please login with Google/Facebook.",
       });
     }
 
@@ -436,7 +439,7 @@ export const login = async (req, res) => {
         userAgent,
         loginTime: new Date(),
       });
-      
+
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
@@ -448,7 +451,7 @@ export const login = async (req, res) => {
 
     // Get device info
     const deviceInfo = getDeviceInfo(userAgent);
-    
+
     // Get location (you can integrate with IP geolocation API)
     const location = await getLocationFromIP(ip);
 
@@ -467,7 +470,7 @@ export const login = async (req, res) => {
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
     };
-    
+
     await sessionsCollection.insertOne(session);
 
     // Log successful login
@@ -488,14 +491,14 @@ export const login = async (req, res) => {
     // Update user's last login
     await usersCollection.updateOne(
       { _id: user._id },
-      { 
-        $set: { 
+      {
+        $set: {
           lastLogin: new Date(),
           lastLoginIp: ip,
           lastLoginDevice: deviceInfo.device,
-          updatedAt: new Date() 
-        } 
-      }
+          updatedAt: new Date(),
+        },
+      },
     );
 
     // Remove sensitive data
@@ -596,7 +599,7 @@ export const getCurrentUser = async (req, res) => {
 
     const user = await usersCollection.findOne(
       { _id: new ObjectId(userId) },
-      { projection: { password: 0, pin: 0 } }
+      { projection: { password: 0, pin: 0 } },
     );
 
     if (!user) {
@@ -653,91 +656,6 @@ export const getCurrentUser = async (req, res) => {
 
 // ==================== OTP SERVICES ====================
 
-export const sendPhoneOtp = async (req, res) => {
-  try {
-    const { phone } = req.body;
-
-    if (!phone) {
-      return res.status(400).json({
-        success: false,
-        message: "Phone number is required",
-      });
-    }
-
-    const otp = generateOTP();
-    
-    const otpCollection = db.collection("otps");
-    
-    await otpCollection.deleteMany({ phone, type: "phone_verification" });
-    
-    await otpCollection.insertOne({
-      phone,
-      otp,
-      type: "phone_verification",
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
-    });
-
-    if (process.env.NODE_ENV === "production") {
-      console.log(`[PRODUCTION] SMS OTP ${otp} sent to ${phone}`);
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "OTP sent successfully",
-      ...(process.env.NODE_ENV !== "production" && { otp }),
-    });
-  } catch (error) {
-    console.error("Send OTP error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to send OTP",
-    });
-  }
-};
-
-export const verifyPhoneOtp = async (req, res) => {
-  try {
-    const { phone, otp } = req.body;
-
-    if (!phone || !otp) {
-      return res.status(400).json({
-        success: false,
-        message: "Phone number and OTP are required",
-      });
-    }
-
-    const otpCollection = db.collection("otps");
-    
-    const otpRecord = await otpCollection.findOne({
-      phone,
-      otp,
-      type: "phone_verification",
-      expiresAt: { $gt: new Date() },
-    });
-
-    if (!otpRecord) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or expired OTP",
-      });
-    }
-
-    await otpCollection.deleteOne({ _id: otpRecord._id });
-
-    return res.status(200).json({
-      success: true,
-      message: "Phone verified successfully",
-    });
-  } catch (error) {
-    console.error("Verify OTP error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "OTP verification failed",
-    });
-  }
-};
-
 export const sendEmailOtp = async (req, res) => {
   try {
     const { email } = req.body;
@@ -750,11 +668,11 @@ export const sendEmailOtp = async (req, res) => {
     }
 
     const otp = generateOTP();
-    
+
     const otpCollection = db.collection("otps");
-    
+
     await otpCollection.deleteMany({ email, type: "email_verification" });
-    
+
     await otpCollection.insertOne({
       email,
       otp,
@@ -793,7 +711,7 @@ export const verifyEmailOtp = async (req, res) => {
     }
 
     const otpCollection = db.collection("otps");
-    
+
     const otpRecord = await otpCollection.findOne({
       email,
       otp,
@@ -828,20 +746,20 @@ export const verifyEmailOtp = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { 
-      firstName, 
-      lastName, 
-      email, 
-      dob, 
-      gender, 
-      occupation, 
-      income, 
-      village, 
-      postOffice, 
+    const {
+      firstName,
+      lastName,
+      email,
+      dob,
+      gender,
+      occupation,
+      income,
+      village,
+      postOffice,
       postCode,
       division,
       district,
-      upazila
+      upazila,
     } = req.body;
 
     const usersCollection = db.collection("users");
@@ -852,7 +770,9 @@ export const updateProfile = async (req, res) => {
 
     if (firstName) updateData.firstName = firstName;
     if (lastName) updateData.lastName = lastName;
-    if (firstName || lastName) updateData.fullName = `${firstName || req.user.firstName} ${lastName || req.user.lastName}`.trim();
+    if (firstName || lastName)
+      updateData.fullName =
+        `${firstName || req.user.firstName} ${lastName || req.user.lastName}`.trim();
     if (email) updateData.email = email;
     if (dob) updateData.dob = dob;
     if (gender) updateData.gender = gender;
@@ -864,7 +784,7 @@ export const updateProfile = async (req, res) => {
     if (division) updateData.division = division;
     if (district) updateData.district = district;
     if (upazila) updateData.upazila = upazila;
-    
+
     if (division || district || upazila || village || postOffice || postCode) {
       updateData.address = {
         division: division || req.user.division,
@@ -892,7 +812,7 @@ export const updateProfile = async (req, res) => {
 
     const result = await usersCollection.updateOne(
       { _id: new ObjectId(userId) },
-      { $set: updateData }
+      { $set: updateData },
     );
 
     if (result.matchedCount === 0) {
@@ -904,7 +824,7 @@ export const updateProfile = async (req, res) => {
 
     const updatedUser = await usersCollection.findOne(
       { _id: new ObjectId(userId) },
-      { projection: { password: 0, pin: 0 } }
+      { projection: { password: 0, pin: 0 } },
     );
 
     return res.status(200).json({
@@ -958,7 +878,10 @@ export const changePassword = async (req, res) => {
       });
     }
 
-    const isValidPassword = await bcrypt.compare(currentPassword, user.password);
+    const isValidPassword = await bcrypt.compare(
+      currentPassword,
+      user.password,
+    );
     if (!isValidPassword) {
       return res.status(401).json({
         success: false,
@@ -975,7 +898,7 @@ export const changePassword = async (req, res) => {
           password: hashedPassword,
           updatedAt: new Date(),
         },
-      }
+      },
     );
 
     return res.status(200).json({
@@ -1038,7 +961,7 @@ export const changePin = async (req, res) => {
           pin: hashedPin,
           updatedAt: new Date(),
         },
-      }
+      },
     );
 
     return res.status(200).json({
@@ -1057,7 +980,14 @@ export const changePin = async (req, res) => {
 export const updateNominee = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { nomineeFirstName, nomineeLastName, nomineeRelation, nomineePhone, nomineeNid, nomineeShare } = req.body;
+    const {
+      nomineeFirstName,
+      nomineeLastName,
+      nomineeRelation,
+      nomineePhone,
+      nomineeNid,
+      nomineeShare,
+    } = req.body;
 
     const usersCollection = db.collection("users");
 
@@ -1074,7 +1004,7 @@ export const updateNominee = async (req, res) => {
 
     const result = await usersCollection.updateOne(
       { _id: new ObjectId(userId) },
-      { $set: updateData }
+      { $set: updateData },
     );
 
     if (result.matchedCount === 0) {
@@ -1100,7 +1030,16 @@ export const updateNominee = async (req, res) => {
 export const updatePaymentMethod = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { paymentMethod, walletNumber, walletName, bankName, bankAccNum, bankAccName, bankBranch, bankRouting } = req.body;
+    const {
+      paymentMethod,
+      walletNumber,
+      walletName,
+      bankName,
+      bankAccNum,
+      bankAccName,
+      bankBranch,
+      bankRouting,
+    } = req.body;
 
     if (!paymentMethod) {
       return res.status(400).json({
@@ -1145,7 +1084,7 @@ export const updatePaymentMethod = async (req, res) => {
 
     const result = await usersCollection.updateOne(
       { _id: new ObjectId(userId) },
-      { $set: updateData }
+      { $set: updateData },
     );
 
     if (result.matchedCount === 0) {
@@ -1182,7 +1121,7 @@ export const uploadProfilePicture = async (req, res) => {
     const usersCollection = db.collection("users");
 
     const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
-    
+
     if (user?.profilePicturePublicId) {
       try {
         await deleteFromCloudinary(user.profilePicturePublicId, "image");
@@ -1199,7 +1138,7 @@ export const uploadProfilePicture = async (req, res) => {
           profilePicturePublicId: req.file.filename,
           updatedAt: new Date(),
         },
-      }
+      },
     );
 
     return res.status(200).json({
@@ -1244,7 +1183,7 @@ export const deleteProfilePicture = async (req, res) => {
           profilePicturePublicId: null,
           updatedAt: new Date(),
         },
-      }
+      },
     );
 
     return res.status(200).json({
@@ -1304,18 +1243,18 @@ export const getActiveSessions = async (req, res) => {
     const userId = req.user.id;
 
     const sessionsCollection = db.collection("user_sessions");
-    
+
     const sessions = await sessionsCollection
       .find({
         userId: new ObjectId(userId),
         isActive: true,
-        expiresAt: { $gt: new Date() }
+        expiresAt: { $gt: new Date() },
       })
       .sort({ lastActivity: -1 })
       .toArray();
 
     // Format sessions for frontend
-    const formattedSessions = sessions.map(session => ({
+    const formattedSessions = sessions.map((session) => ({
       id: session._id,
       device: getDeviceIcon(session.device),
       deviceType: session.device,
@@ -1354,7 +1293,7 @@ export const revokeSession = async (req, res) => {
     }
 
     const sessionsCollection = db.collection("user_sessions");
-    
+
     const session = await sessionsCollection.findOne({
       _id: new ObjectId(sessionId),
       userId: new ObjectId(userId),
@@ -1384,7 +1323,7 @@ export const revokeSession = async (req, res) => {
           revokedAt: new Date(),
           revokedBy: new ObjectId(userId),
         },
-      }
+      },
     );
 
     return res.status(200).json({
@@ -1407,7 +1346,7 @@ export const getLoginHistory = async (req, res) => {
     const { page = 1, limit = 20 } = req.query;
 
     const loginHistoryCollection = db.collection("login_history");
-    
+
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const limitNum = parseInt(limit);
 
@@ -1422,7 +1361,7 @@ export const getLoginHistory = async (req, res) => {
       userId: new ObjectId(userId),
     });
 
-    const formattedHistory = history.map(entry => ({
+    const formattedHistory = history.map((entry) => ({
       id: entry._id,
       success: entry.success,
       name: entry.success ? "Successful Login" : "Failed Login Attempt",
@@ -1453,12 +1392,12 @@ export const getLoginHistory = async (req, res) => {
   }
 };
 
-
 // Helper functions
 const getDeviceIcon = (device) => {
   const deviceLower = device?.toLowerCase() || "";
   if (deviceLower.includes("android")) return "📱";
-  if (deviceLower.includes("ios") || deviceLower.includes("iphone")) return "🍎";
+  if (deviceLower.includes("ios") || deviceLower.includes("iphone"))
+    return "🍎";
   if (deviceLower.includes("windows")) return "💻";
   if (deviceLower.includes("mac")) return "🖥️";
   if (deviceLower.includes("linux")) return "🐧";
@@ -1475,8 +1414,8 @@ const getTimeAgo = (date) => {
 
   if (minutes < 1) return "Active now";
   if (minutes < 60) return `${minutes} min ago`;
-  if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-  if (days < 7) return `${days} day${days > 1 ? 's' : ''} ago`;
+  if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+  if (days < 7) return `${days} day${days > 1 ? "s" : ""} ago`;
   return new Date(date).toLocaleDateString();
 };
 
@@ -1488,14 +1427,14 @@ const formatLoginTime = (date) => {
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
   const hours = loginDate.getHours();
   const minutes = loginDate.getMinutes();
-  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const ampm = hours >= 12 ? "PM" : "AM";
   const formattedHours = hours % 12 || 12;
-  
+
   if (days === 0) {
-    return `Today, ${formattedHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+    return `Today, ${formattedHours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
   } else if (days === 1) {
-    return `Yesterday, ${formattedHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+    return `Yesterday, ${formattedHours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
   } else {
-    return `${days} days ago, ${formattedHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+    return `${days} days ago, ${formattedHours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
   }
 };

@@ -10,6 +10,7 @@ import {
   getAllReferrals,
 } from "../../controllers/referral/referral.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
+import verifyAdmin from "../../middlewares/verifyAdmin.js";
 
 const router = Router();
 
@@ -27,6 +28,6 @@ router.get("/referred-users", getReferredUsers);
 router.post("/process-bonus", processReferralBonus);
 
 // Admin routes
-router.get("/admin/all", getAllReferrals);
+router.get("/admin/all", verifyAdmin, getAllReferrals);
 
 export default router;

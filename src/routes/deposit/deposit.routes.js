@@ -12,6 +12,7 @@ import {
   debugGoalDeposit,
 } from "../../controllers/deposiit/deposit.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
+import verifyAdmin from "../../middlewares/verifyAdmin.js";
 import { uploadSingle } from "../../middlewares/upload.js";
 
 const router = Router();
@@ -36,9 +37,9 @@ router.get("/:id", getDepositById);
 // Debug route (remove in production)
 router.get("/debug/goal/:goalId", debugGoalDeposit);
 
-// Admin routes
-router.get("/admin/all", getAllDeposits);
-router.patch("/:id/approve", approveDeposit);
-router.patch("/:id/reject", rejectDeposit);
+// Admin routes - require admin role
+router.get("/admin/all", verifyAdmin, getAllDeposits);
+router.patch("/:id/approve", verifyAdmin, approveDeposit);
+router.patch("/:id/reject", verifyAdmin, rejectDeposit);
 
 export default router;

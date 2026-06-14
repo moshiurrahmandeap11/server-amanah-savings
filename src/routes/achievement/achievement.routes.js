@@ -8,6 +8,7 @@ import {
   getUserAchievementsAdmin,
 } from "../../controllers/achievement/achievement.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
+import verifyAdmin from "../../middlewares/verifyAdmin.js";
 
 const router = Router();
 
@@ -21,6 +22,6 @@ router.get("/leaderboard", getPointsLeaderboard);
 router.get("/badge/:badgeId", getBadgeDetails);
 
 // Admin routes
-router.get("/admin/user/:userId", getUserAchievementsAdmin);
+router.get("/admin/user/:userId", verifyAdmin, getUserAchievementsAdmin);
 
 export default router;

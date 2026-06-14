@@ -11,6 +11,7 @@ import {
   getWithdrawalStatistics,
 } from "../../controllers/withdrawal/withdrawal.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
+import verifyAdmin from "../../middlewares/verifyAdmin.js";
 
 const router = Router();
 
@@ -24,10 +25,10 @@ router.get("/", getUserWithdrawals);
 router.get("/statistics", getWithdrawalStatistics);
 router.get("/:id", getWithdrawalById);
 
-// Admin routes
-router.get("/admin/all", getAllWithdrawals);
-router.patch("/:id/approve", approveWithdrawal);
-router.patch("/:id/reject", rejectWithdrawal);
-router.patch("/:id/complete", completeWithdrawal);
+// Admin routes - require admin role
+router.get("/admin/all", verifyAdmin, getAllWithdrawals);
+router.patch("/:id/approve", verifyAdmin, approveWithdrawal);
+router.patch("/:id/reject", verifyAdmin, rejectWithdrawal);
+router.patch("/:id/complete", verifyAdmin, completeWithdrawal);
 
 export default router;

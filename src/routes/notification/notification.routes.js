@@ -11,6 +11,7 @@ import {
   getAllNotifications,
 } from "../../controllers/notification/notification.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
+import verifyAdmin from "../../middlewares/verifyAdmin.js";
 
 const router = Router();
 
@@ -26,7 +27,7 @@ router.put("/read-all", markAllAsRead);
 router.delete("/:id", deleteNotification);
 
 // Admin routes
-router.get("/admin/all", getAllNotifications);
-router.post("/admin/create", createNotification);
+router.get("/admin/all", verifyAdmin, getAllNotifications);
+router.post("/admin/create", verifyAdmin, createNotification);
 
 export default router;

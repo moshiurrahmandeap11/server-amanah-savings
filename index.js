@@ -1,6 +1,7 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import adminRoutes from "./src/routes/admin/admin.routes.js";
 
 dotenv.config();
 const port = process.env.PORT;
@@ -15,7 +16,7 @@ import circle from "./src/routes/circle/circle.route.js";
 import deposit from "./src/routes/deposit/deposit.routes.js";
 import withdrawal from "./src/routes/withdrawal/withdrawal.routes.js";
 import transferRoutes from "./src/routes/transfer/transfer.routes.js";
-import autoSaveRoutes from "./src/routes/auto-save/autoSave.controller.js";
+import autoSaveRoutes from "./src/routes/auto-save/autoSave.routes.js";
 import zakatRoutes from "./src/routes/zakat/zakat.routes.js";
 import leaderboardRoutes from "./src/routes/leaderboard/leaderboard.routes.js";
 import challengeRoutes from "./src/routes/challenge/challenge.routes.js";
@@ -63,9 +64,7 @@ app.use("/api/referrals", referralRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/help", helpRoutes);
 
-app.get("/", (req, res) => {
-  res.send("amanah savings running rapidly");
-});
+app.use("/api/admin", adminRoutes);
 
 app.listen(port, () => {
   console.log(`amanah savings running on port http://localhost:${port}`);

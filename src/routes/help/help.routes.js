@@ -19,6 +19,7 @@ import {
   getHelpStatistics,
 } from "../../controllers/help/help.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
+import verifyAdmin from "../../middlewares/verifyAdmin.js";
 
 const router = Router();
 
@@ -43,10 +44,10 @@ router.get("/tickets/:ticketId", getTicketById);
 router.post("/tickets/:ticketId/reply", replyToTicket);
 
 // Admin routes
-router.post("/admin/articles", createArticle);
-router.put("/admin/articles/:articleId", updateArticle);
-router.delete("/admin/articles/:articleId", deleteArticle);
-router.get("/admin/tickets", getAllSupportTickets);
-router.patch("/admin/tickets/:ticketId/status", updateTicketStatus);
+router.post("/admin/articles", verifyAdmin, createArticle);
+router.put("/admin/articles/:articleId", verifyAdmin, updateArticle);
+router.delete("/admin/articles/:articleId", verifyAdmin, deleteArticle);
+router.get("/admin/tickets", verifyAdmin, getAllSupportTickets);
+router.patch("/admin/tickets/:ticketId/status", verifyAdmin, updateTicketStatus);
 
 export default router;

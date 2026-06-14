@@ -9,6 +9,7 @@ import {
   getAllTransfers,
 } from "../../controllers/transfer/transfer.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
+import verifyAdmin from "../../middlewares/verifyAdmin.js";
 
 const router = Router();
 
@@ -26,6 +27,6 @@ router.get("/", getUserTransfers);
 router.get("/:id", getTransferById);
 
 // Admin routes
-router.get("/admin/all", getAllTransfers);
+router.get("/admin/all", verifyAdmin, getAllTransfers);
 
 export default router;
