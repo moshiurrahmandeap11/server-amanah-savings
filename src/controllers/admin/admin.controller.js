@@ -267,6 +267,13 @@ export const adminReplyToTicket = async (req, res) => {
     const reply = { ticketId, userId: new ObjectId(adminId), message, isAdmin: true, isInternal, createdAt: new Date() };
     await repliesCollection.insertOne(reply);
     await ticketsCollection.updateOne({ ticketId }, { $set: { status: isInternal ? ticket.status : "in_progress", updatedAt: new Date() } });
+    
+    // Emit real-time ticket reply to user
+    const { emitTicketReply } = await import("../socket/socket.js");
+    if (ticket.userId) {
+      emitTicketReply(ticket.userId.toString(), ticketId, { message, isAdmin: true, createdAt: new Date() });
+    }
+    
     return res.status(200).json({ success: true, message: "Reply added successfully", data: reply });
   } catch (error) {
     console.error("Admin reply to ticket error:", error);
@@ -327,6 +334,13 @@ export const sendBulkNotification = async (req, res) => {
       insertedCount += result.insertedCount;
     }
     await notificationLogsCollection.insertOne({ title, message, type, audience, plan, sendVia, recipientCount: userIds.length, sentCount: insertedCount, scheduledAt: scheduledAt ? new Date(scheduledAt) : null, sentAt: scheduledAt ? null : new Date(), sentBy: req.user._id || req.user.id, createdAt: new Date() });
+    
+    // Emit real-time notifications to all affected users
+    const { emitUserNotification } = await import("../socket/socket.js");
+    for (const userId of userIds) {
+      emitUserNotification(userId.toString(), { type, title, message, createdAt: new Date() });
+    }
+    
     return res.status(200).json({ success: true, message: `Notification sent to ${insertedCount} users`, data: { recipientCount: userIds.length, sentCount: insertedCount } });
   } catch (error) {
     console.error("Send bulk notification error:", error);

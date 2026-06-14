@@ -1,4 +1,5 @@
 // controllers/notification/notification.controller.js
+import { emitUserNotification } from "../../socket/socket.js";
 import { db } from "../../database/db.js";
 import { ObjectId } from "mongodb";
 
@@ -58,6 +59,9 @@ export const createNotification = async (req, res) => {
         $inc: { unreadNotifications: 1 },
       }
     );
+
+    // Emit real-time notification via Socket.IO
+    emitUserNotification(userId, { ...notification, _id: result.insertedId });
 
     return res.status(201).json({
       success: true,
@@ -494,6 +498,9 @@ export const generateDepositNotification = async (deposit) => {
       }
     );
     
+    // Emit real-time notification
+    emitUserNotification(deposit.userId.toString(), { ...notification, _id: result.insertedId });
+    
     return result;
   } catch (error) {
     console.error("Generate deposit notification error:", error);
@@ -563,6 +570,9 @@ export const generateStreakNotification = async (userId, streak) => {
       }
     );
     
+    // Emit real-time notification
+    emitUserNotification(userId, { ...notification, _id: result.insertedId });
+    
     return result;
   } catch (error) {
     console.error("Generate streak notification error:", error);
@@ -621,6 +631,9 @@ export const generateBonusNotification = async (userId, amount, type, fromUser) 
       }
     );
     
+    // Emit real-time notification
+    emitUserNotification(userId, { ...notification, _id: result.insertedId });
+    
     return result;
   } catch (error) {
     console.error("Generate bonus notification error:", error);
@@ -662,6 +675,9 @@ export const generateAchievementNotification = async (userId, badgeName, points)
         $inc: { unreadNotifications: 1 },
       }
     );
+    
+    // Emit real-time notification
+    emitUserNotification(userId, { ...notification, _id: result.insertedId });
     
     return result;
   } catch (error) {
@@ -707,6 +723,9 @@ export const generateMilestoneNotification = async (userId, goalName, progress, 
         $inc: { unreadNotifications: 1 },
       }
     );
+    
+    // Emit real-time notification
+    emitUserNotification(userId, { ...notification, _id: result.insertedId });
     
     return result;
   } catch (error) {

@@ -633,6 +633,10 @@ export const replyToTicket = async (req, res) => {
       }
     );
 
+    // Emit real-time ticket reply to admins
+    const { emitNewTicket } = await import("../../socket/socket.js");
+    emitNewTicket({ ticketId, reply, userId: userId.toString(), updatedAt: new Date() });
+
     return res.status(200).json({
       success: true,
       message: "Reply added successfully",

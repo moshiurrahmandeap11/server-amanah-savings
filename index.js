@@ -1,11 +1,17 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import { createServer } from "http";
 import adminRoutes from "./src/routes/admin/admin.routes.js";
+import { initSocketIO } from "./src/socket/socket.js";
 
 dotenv.config();
 const port = process.env.PORT;
 const app = express();
+const httpServer = createServer(app);
+
+// Initialize Socket.IO
+initSocketIO(httpServer);
 
 // import routes
 import users from "./src/routes/auth/auth.routes.js";
@@ -66,6 +72,6 @@ app.use("/api/help", helpRoutes);
 
 app.use("/api/admin", adminRoutes);
 
-app.listen(port, () => {
+httpServer.listen(port, () => {
   console.log(`amanah savings running on port http://localhost:${port}`);
 });

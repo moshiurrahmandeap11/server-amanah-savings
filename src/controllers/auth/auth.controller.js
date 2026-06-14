@@ -681,8 +681,12 @@ export const sendEmailOtp = async (req, res) => {
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
-    if (process.env.NODE_ENV === "production") {
-      console.log(`[PRODUCTION] Email OTP ${otp} sent to ${email}`);
+    // Send real email via Nodemailer
+    const emailResult = await sendOtpEmail(email, otp);
+    
+    if (!emailResult.success) {
+      console.error("Failed to send email:", emailResult.error);
+      // Still return OTP in dev mode so registration can proceed
     }
 
     return res.status(200).json({
