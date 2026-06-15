@@ -1439,3 +1439,319 @@ const formatLoginTime = (date) => {
     return `${days} days ago, ${formattedHours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
   }
 };
+
+// ==================== FORGOT PASSWORD ====================
+
+// Send OTP for password reset
+export const sendPasswordResetOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+
+    // Check if user exists with this email
+    const user = await usersCollection.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "No account found with this email address",
+      });
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+
+    const otpCollection = db.collection("otps");
+
+    // Delete any existing OTP for this email (password reset type)
+    await otpCollection.deleteMany({ 
+      email, 
+      type: "password_reset" 
+    });
+
+    // Store new OTP
+    await otpCollection.insertOne({
+      email,
+      otp,
+      type: "password_reset",
+      userId: user._id,
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes expiry
+    });
+
+    // Send OTP via email
+    const emailResult = await sendOtpEmail(email, otp, "password_reset");
+
+    if (!emailResult.success) {
+      console.error("Failed to send password reset email:", emailResult.error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send OTP email. Please try again later.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset OTP sent to your email",
+      // Only include OTP in development for testing
+      ...(process.env.NODE_ENV !== "production" && { otp }),
+    });
+  } catch (error) {
+    console.error("Send password reset OTP error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to send OTP",
+    });
+  }
+};
+
+// Verify OTP and reset password
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Email, OTP, and new password are required",
+      });
+    }
+
+    // Password validation
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 8 characters",
+      });
+    }
+
+    const otpCollection = db.collection("otps");
+    const usersCollection = db.collection("users");
+
+    // Verify OTP
+    const otpRecord = await otpCollection.findOne({
+      email,
+      otp,
+      type: "password_reset",
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP",
+      });
+    }
+
+    // Check if user exists
+    const user = await usersCollection.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update user's password
+    await usersCollection.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          password: hashedPassword,
+          updatedAt: new Date(),
+        },
+      },
+    );
+
+    // Delete used OTP
+    await otpCollection.deleteOne({ _id: otpRecord._id });
+
+    // Delete all active sessions for this user (force logout from all devices)
+    const sessionsCollection = db.collection("user_sessions");
+    await sessionsCollection.updateMany(
+      { userId: user._id, isActive: true },
+      {
+        $set: {
+          isActive: false,
+          endedAt: new Date(),
+          reason: "password_reset",
+        },
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successful. Please login with your new password.",
+    });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to reset password",
+    });
+  }
+};
+
+// Alternative: Reset password with token (if you prefer token-based approach)
+export const sendPasswordResetLink = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+
+    const user = await usersCollection.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "No account found with this email address",
+      });
+    }
+
+    // Generate reset token
+    const resetToken = jwt.sign(
+      { userId: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    const resetTokensCollection = db.collection("password_reset_tokens");
+
+    // Delete any existing tokens for this user
+    await resetTokensCollection.deleteMany({ userId: user._id });
+
+    // Store reset token
+    await resetTokensCollection.insertOne({
+      userId: user._id,
+      token: resetToken,
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+    });
+
+    // Create reset link
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+
+    // Send reset link via email (you'll need to create this email template)
+    // await sendResetLinkEmail(email, resetLink);
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset link sent to your email",
+      ...(process.env.NODE_ENV !== "production" && { resetLink }),
+    });
+  } catch (error) {
+    console.error("Send password reset link error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to send reset link",
+    });
+  }
+};
+
+// Reset password using token
+export const resetPasswordWithToken = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Token and new password are required",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 8 characters",
+      });
+    }
+
+    // Verify token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token",
+      });
+    }
+
+    const resetTokensCollection = db.collection("password_reset_tokens");
+    const usersCollection = db.collection("users");
+
+    // Check if token exists in database
+    const tokenRecord = await resetTokensCollection.findOne({
+      token,
+      userId: new ObjectId(decoded.userId),
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!tokenRecord) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token",
+      });
+    }
+
+    // Update password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await usersCollection.updateOne(
+      { _id: new ObjectId(decoded.userId) },
+      {
+        $set: {
+          password: hashedPassword,
+          updatedAt: new Date(),
+        },
+      },
+    );
+
+    // Delete used token
+    await resetTokensCollection.deleteOne({ _id: tokenRecord._id });
+
+    // Delete all active sessions
+    const sessionsCollection = db.collection("user_sessions");
+    await sessionsCollection.updateMany(
+      { userId: new ObjectId(decoded.userId), isActive: true },
+      {
+        $set: {
+          isActive: false,
+          endedAt: new Date(),
+          reason: "password_reset",
+        },
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successful. Please login with your new password.",
+    });
+  } catch (error) {
+    console.error("Reset password with token error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to reset password",
+    });
+  }
+};

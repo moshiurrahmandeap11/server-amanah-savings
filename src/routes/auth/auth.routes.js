@@ -13,6 +13,10 @@ import {
   uploadProfilePicture,
   deleteProfilePicture,
   deleteAccount,
+  sendPasswordResetOtp,
+  resetPassword,
+  sendPasswordResetLink,
+  resetPasswordWithToken,
 } from "../../controllers/auth/auth.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
 import { uploadSingle } from "../../middlewares/upload.js";
@@ -56,5 +60,12 @@ router.put("/payment-method", verifyToken, updatePaymentMethod);
 
 // Account
 router.delete("/account", verifyToken, deleteAccount);
+
+router.post("/forgot-password/send-otp", sendPasswordResetOtp);
+router.post("/forgot-password/reset", resetPassword);
+
+// Alternative token-based routes (optional)
+router.post("/forgot-password/send-link", sendPasswordResetLink);
+router.post("/forgot-password/reset-with-token", resetPasswordWithToken);
 
 export default router;
