@@ -821,3 +821,65 @@ export const getHelpStatistics = async (req, res) => {
     });
   }
 };
+
+
+// Admin: Reply to ticket (add this to help.controller.js)
+export const adminReplyToTicket = async (req, res) => {
+  try {
+    const adminId = req.user._id;
+    const { ticketId } = req.params;
+    const { message } = req.body;
+
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        message: "Message is required",
+      });
+    }
+
+    const ticketsCollection = db.collection("support_tickets");
+    const repliesCollection = db.collection("ticket_replies");
+
+    const ticket = await ticketsCollection.findOne({ ticketId });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Ticket not found",
+      });
+    }
+
+    const reply = {
+      ticketId,
+      userId: new ObjectId(adminId),
+      message,
+      isAdmin: true,
+      createdAt: new Date(),
+    };
+
+    await repliesCollection.insertOne(reply);
+
+    // Update ticket status to in_progress
+    await ticketsCollection.updateOne(
+      { ticketId },
+      {
+        $set: {
+          status: "in_progress",
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Reply added successfully",
+      data: reply,
+    });
+  } catch (error) {
+    console.error("Admin reply to ticket error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to add reply",
+    });
+  }
+};

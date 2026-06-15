@@ -52,7 +52,12 @@ export const sendOtpEmail = async (email, otp) => {
       <p style="font-size: 12px; color: #999; text-align: center;">Amanah Savings — Islamic Savings Platform for Bangladesh</p>
     </div>
   `;
-  return sendEmail({ to: email, subject: "Your Amanah Savings Verification Code", html, text: `Your verification code is: ${otp}. This code will expire in 5 minutes.` });
+  return sendEmail({
+    to: email,
+    subject: "Your Amanah Savings Verification Code",
+    html,
+    text: `Your verification code is: ${otp}. This code will expire in 5 minutes.`,
+  });
 };
 
 export const sendNotificationEmail = async (email, title, message) => {
@@ -83,5 +88,10 @@ export const sendTicketReplyEmail = async (email, ticketId, replyMessage) => {
       <p style="font-size: 12px; color: #999; text-align: center;">Amanah Savings — Islamic Savings Platform for Bangladesh</p>
     </div>
   `;
-  return sendEmail({ to: email, subject: `New Reply to Your Support Ticket ${ticketId}`, html, text: `Your support ticket ${ticketId} has a new reply: ${replyMessage}` });
+  return sendEmail({
+    to: email,
+    subject: `New Reply to Your Support Ticket ${ticketId}`,
+    html,
+    text: `Your support ticket ${ticketId} has a new reply: ${replyMessage}`,
+  });
 };

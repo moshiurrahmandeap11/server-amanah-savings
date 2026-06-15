@@ -27,6 +27,7 @@ const verifyAdmin = async (req, res, next) => {
         
         req.user = {
             _id: decoded._id || decoded.id || decoded.userId,
+            id: decoded.id || decoded._id || decoded.userId,
             ...decoded
         };
 

@@ -17,6 +17,7 @@ import {
   getAllSupportTickets,
   updateTicketStatus,
   getHelpStatistics,
+  adminReplyToTicket,
 } from "../../controllers/help/help.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
 import verifyAdmin from "../../middlewares/verifyAdmin.js";
@@ -49,5 +50,6 @@ router.put("/admin/articles/:articleId", verifyAdmin, updateArticle);
 router.delete("/admin/articles/:articleId", verifyAdmin, deleteArticle);
 router.get("/admin/tickets", verifyAdmin, getAllSupportTickets);
 router.patch("/admin/tickets/:ticketId/status", verifyAdmin, updateTicketStatus);
+router.post("/admin/tickets/:ticketId/reply", verifyAdmin, adminReplyToTicket);
 
 export default router;
