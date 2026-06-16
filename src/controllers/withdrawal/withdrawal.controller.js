@@ -343,9 +343,10 @@ export const getAllWithdrawals = async (req, res) => {
             status: 1,
             remarks: 1,
             createdAt: 1,
-            "user.name": 1,
+            "user.fullName": 1,
             "user.email": 1,
             "user.phone": 1,
+            "user.createdAt" : 1,
           },
         },
       ])

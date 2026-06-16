@@ -30,6 +30,7 @@ import achievementRoutes from "./src/routes/achievement/achievement.routes.js";
 import referralRoutes from "./src/routes/referral/referral.routes.js";
 import notificationRoutes from "./src/routes/notification/notification.routes.js";
 import helpRoutes from "./src/routes/help/help.routes.js";
+import contactRoutes from "./src/routes/contact/contact.routes.js";
 
 app.use(
   cors({
@@ -69,6 +70,7 @@ app.use("/api/achievements", achievementRoutes);
 app.use("/api/referrals", referralRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/help", helpRoutes);
+app.use("/api/contact", contactRoutes);
 
 app.use("/api/admin", adminRoutes);
 

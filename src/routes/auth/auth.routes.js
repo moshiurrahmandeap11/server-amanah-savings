@@ -13,6 +13,7 @@ import {
   uploadProfilePicture,
   deleteProfilePicture,
   deleteAccount,
+  getUserById,
 } from "../../controllers/auth/auth.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
 import { uploadSingle } from "../../middlewares/upload.js";
@@ -35,6 +36,7 @@ router.post("/login", login);
 
 // User Profile
 router.get("/me", verifyToken, getCurrentUser);
+router.get("/users/:id", verifyToken, getUserById);
 router.put("/profile", verifyToken, updateProfile);
 router.put("/change-password", verifyToken, changePassword);
 router.put("/change-pin", verifyToken, changePin);

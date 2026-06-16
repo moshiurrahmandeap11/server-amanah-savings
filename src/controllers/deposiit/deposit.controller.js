@@ -263,6 +263,8 @@ export const getAllDeposits = async (req, res) => {
     const { status, page = 1, limit = 20 } = req.query;
 
     const depositsCollection = db.collection("deposits");
+
+    
     
     const query = {};
     if (status && status !== "all") {
@@ -293,21 +295,22 @@ export const getAllDeposits = async (req, res) => {
           },
         },
         {
-          $project: {
-            _id: 1,
-            goalName: 1,
-            goalType: 1,
-            depositAmount: 1,
-            paymentMethod: 1,
-            transactionReference: 1,
-            screenshot: 1,
-            status: 1,
-            remarks: 1,
-            createdAt: 1,
-            "user.name": 1,
-            "user.email": 1,
-            "user.phone": 1,
-          },
+ $project: {
+  _id: 1,
+  goalName: 1,
+  goalType: 1,
+  depositAmount: 1,
+  paymentMethod: 1,
+  transactionReference: 1,
+  screenshot: 1,
+  status: 1,
+  remarks: 1,
+  createdAt: 1,
+  "user.fullName": 1, 
+  "user.email": 1,
+  "user.phone": 1,
+  "user.createdAt": 1, 
+},
         },
       ])
       .toArray();

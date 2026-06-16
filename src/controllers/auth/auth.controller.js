@@ -1439,3 +1439,329 @@ const formatLoginTime = (date) => {
     return `${days} days ago, ${formattedHours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
   }
 };
+
+// ==================== GET USER BY ID (ADMIN & USER SELF) ====================
+
+export const getUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const requestingUserId = req.user.id;
+    const requestingUserRole = req.user.role;
+
+    // Check authorization - only admin or the user themselves can view
+    if (requestingUserRole !== "admin" && requestingUserId !== id) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view this user's details",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+    const depositsCollection = db.collection("deposits");
+    const withdrawalsCollection = db.collection("withdrawals");
+    const goalsCollection = db.collection("goals");
+    const circlesCollection = db.collection("circles");
+    const loginHistoryCollection = db.collection("login_history");
+    const sessionsCollection = db.collection("user_sessions");
+
+    // Get user basic info
+    const user = await usersCollection.findOne(
+      { _id: new ObjectId(id) },
+      { projection: { password: 0, pin: 0 } }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Get all deposits
+    const deposits = await depositsCollection
+      .find({ userId: new ObjectId(id) })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .toArray();
+
+    // Get all withdrawals
+    const withdrawals = await withdrawalsCollection
+      .find({ userId: new ObjectId(id) })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .toArray();
+
+    // Get all goals
+    const goals = await goalsCollection
+      .find({ userId: new ObjectId(id) })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    // Get circles user is part of
+    const circles = await circlesCollection
+      .find({ 
+        $or: [
+          { creatorId: new ObjectId(id) },
+          { "members.userId": new ObjectId(id) }
+        ]
+      })
+      .toArray();
+
+    // Get login history (last 20)
+    const loginHistory = await loginHistoryCollection
+      .find({ userId: new ObjectId(id) })
+      .sort({ loginTime: -1 })
+      .limit(20)
+      .toArray();
+
+    // Get active sessions
+    const activeSessions = await sessionsCollection
+      .find({ 
+        userId: new ObjectId(id), 
+        isActive: true,
+        expiresAt: { $gt: new Date() }
+      })
+      .sort({ lastActivity: -1 })
+      .toArray();
+
+    // Calculate statistics
+    const totalDeposits = deposits
+      .filter(d => d.status === "approved")
+      .reduce((sum, d) => sum + (d.depositAmount || d.amount || 0), 0);
+    
+    const totalWithdrawals = withdrawals
+      .filter(w => w.status === "completed")
+      .reduce((sum, w) => sum + (w.withdrawalAmount || w.amount || 0), 0);
+    
+    const pendingDeposits = deposits.filter(d => d.status === "pending").length;
+    const pendingWithdrawals = withdrawals.filter(w => w.status === "pending").length;
+    
+    const activeGoals = goals.filter(g => g.status === "active").length;
+    const completedGoals = goals.filter(g => g.status === "completed").length;
+    
+    const totalLoginSuccess = loginHistory.filter(l => l.success === true).length;
+    const totalLoginFailed = loginHistory.filter(l => l.success === false).length;
+
+    // Format deposits for response
+    const formattedDeposits = deposits.map(d => ({
+      id: d._id,
+      amount: d.depositAmount || d.amount || 0,
+      status: d.status,
+      method: d.paymentMethod || d.method,
+      transactionId: d.transactionId,
+      screenshot: d.screenshot,
+      note: d.note,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+    }));
+
+    // Format withdrawals for response
+    const formattedWithdrawals = withdrawals.map(w => ({
+      id: w._id,
+      amount: w.withdrawalAmount || w.amount || 0,
+      status: w.status,
+      method: w.paymentMethod || w.method,
+      transactionId: w.transactionId,
+      note: w.note,
+      createdAt: w.createdAt,
+      updatedAt: w.updatedAt,
+    }));
+
+    // Format goals for response
+    const formattedGoals = goals.map(g => ({
+      id: g._id,
+      title: g.title,
+      type: g.type,
+      targetAmount: g.targetAmount,
+      currentAmount: g.currentAmount,
+      monthlyDeposit: g.monthlyDeposit,
+      duration: g.duration,
+      startDate: g.startDate,
+      targetDate: g.targetDate,
+      status: g.status,
+      progress: g.currentAmount && g.targetAmount 
+        ? Math.round((g.currentAmount / g.targetAmount) * 100) 
+        : 0,
+      createdAt: g.createdAt,
+      updatedAt: g.updatedAt,
+    }));
+
+    // Format login history for response
+    const formattedLoginHistory = loginHistory.map(h => ({
+      id: h._id,
+      success: h.success,
+      device: h.device,
+      deviceName: h.deviceName,
+      browser: h.browser,
+      os: h.os,
+      ip: h.ip,
+      location: h.location,
+      failureReason: h.failureReason,
+      loginTime: h.loginTime,
+    }));
+
+    // Format active sessions for response
+    const formattedSessions = activeSessions.map(s => ({
+      id: s._id,
+      device: s.device,
+      deviceName: s.deviceName,
+      browser: s.browser,
+      os: s.os,
+      ip: s.ip,
+      location: s.location,
+      lastActivity: s.lastActivity,
+      createdAt: s.createdAt,
+      expiresAt: s.expiresAt,
+    }));
+
+    // Format circles for response
+    const formattedCircles = circles.map(c => ({
+      id: c._id,
+      name: c.name,
+      type: c.type,
+      status: c.status,
+      totalMembers: c.members?.length || 0,
+      totalSaved: c.totalSaved || 0,
+      createdAt: c.createdAt,
+    }));
+
+    // Prepare response data
+    const responseData = {
+      // Basic Information
+      id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      fullName: user.fullName,
+      phone: user.phone,
+      email: user.email,
+      role: user.role,
+      
+      // Personal Details
+      dob: user.dob,
+      gender: user.gender,
+      division: user.division,
+      district: user.district,
+      upazila: user.upazila,
+      village: user.village,
+      postOffice: user.postOffice,
+      postCode: user.postCode,
+      occupation: user.occupation,
+      income: user.income,
+      
+      // Address
+      address: user.address,
+      
+      // Account Status
+      accountActive: user.accountActive,
+      isBanned: user.isBanned,
+      isSuspended: user.isSuspended,
+      banReason: user.banReason,
+      suspensionReason: user.suspensionReason,
+      
+      // KYC Information
+      kycStatus: user.kyc?.status || "pending",
+      kycCompleted: user.kycCompleted || false,
+      kyc: user.kyc,
+      
+      // Plan & Level
+      selectedPlan: user.selectedPlan,
+      level: user.level,
+      streak: user.streak,
+      
+      // Financial Statistics
+      totalSaved: user.totalSaved || 0,
+      totalDeposits: totalDeposits,
+      totalWithdrawals: totalWithdrawals,
+      netSavings: totalDeposits - totalWithdrawals,
+      pendingDeposits: pendingDeposits,
+      pendingWithdrawals: pendingWithdrawals,
+      
+      // Goal Statistics
+      totalGoals: goals.length,
+      activeGoals: activeGoals,
+      completedGoals: completedGoals,
+      
+      // Referral Information
+      referralCode: user.referralCode,
+      referredBy: user.referredBy,
+      referralBonusApplied: user.referralBonusApplied,
+      
+      // Nominee Information
+      nominee: user.nominee,
+      
+      // Payment Information
+      paymentMethod: user.paymentMethod,
+      paymentDetails: user.paymentDetails,
+      
+      // Profile
+      profilePicture: user.profilePicture,
+      
+      // Login Statistics
+      loginStats: {
+        totalLogins: totalLoginSuccess,
+        failedLogins: totalLoginFailed,
+        lastLogin: user.lastLogin,
+        lastLoginIp: user.lastLoginIp,
+        lastLoginDevice: user.lastLoginDevice,
+      },
+      
+      // Verification Flags
+      phoneVerified: user.phoneVerified,
+      emailVerified: user.emailVerified,
+      
+      // Marketing & Agreements
+      marketing: user.marketing,
+      termsAccepted: user.termsAccepted,
+      withdrawalPolicyAccepted: user.withdrawalPolicyAccepted,
+      
+      // Timestamps
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      
+      // Detailed Lists
+      deposits: formattedDeposits,
+      withdrawals: formattedWithdrawals,
+      goals: formattedGoals,
+      circles: formattedCircles,
+      loginHistory: formattedLoginHistory,
+      activeSessions: formattedSessions,
+      
+      // Summary
+      summary: {
+        totalDepositAmount: totalDeposits,
+        totalWithdrawalAmount: totalWithdrawals,
+        netSavings: totalDeposits - totalWithdrawals,
+        totalGoals: goals.length,
+        completedGoals: completedGoals,
+        totalCircles: circles.length,
+        totalLoginAttempts: totalLoginSuccess + totalLoginFailed,
+        successRate: totalLoginSuccess + totalLoginFailed > 0 
+          ? Math.round((totalLoginSuccess / (totalLoginSuccess + totalLoginFailed)) * 100) 
+          : 0,
+      },
+    };
+
+    // Add goal specific data if exists
+    if (user.goal) {
+      responseData.goal = {
+        type: user.goal.type,
+        targetAmount: user.goal.targetAmount,
+        monthlyDeposit: user.goal.monthlyDeposit,
+        duration: user.goal.duration,
+        currentSaved: user.goal.currentSaved,
+        progress: user.goal.progress,
+      };
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: responseData,
+    });
+  } catch (error) {
+    console.error("Get user by ID error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch user details",
+    });
+  }
+};
