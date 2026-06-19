@@ -34,7 +34,7 @@ import contactRoutes from "./src/routes/contact/contact.routes.js";
 
 app.use(
   cors({
-    origin: ["https://sanchoybondhu.com", "http://locahost:3000"],
+    origin: ["http://localhost:3000", "https://sanchoybondhu.com"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: [
