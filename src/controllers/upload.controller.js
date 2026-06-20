@@ -194,10 +194,17 @@ export const uploadMultipleFiles = async (req, res) => {
   }
 };
 
-// NEW: Upload KYC files separately
+// NEW: Upload KYC files separately (PUBLIC - no auth required during registration)
 export const uploadKycFiles = async (req, res) => {
   try {
+    console.log("[Upload KYC] Request received:", {
+      folder: req.params.folder,
+      filesCount: req.files?.length || 0,
+      files: req.files?.map(f => ({ name: f.originalname, mimetype: f.mimetype, size: f.size })) || [],
+    });
+    
     if (!req.files || req.files.length === 0) {
+      console.log("[Upload KYC] ERROR: No files in req.files");
       return res.status(400).json({
         success: false,
         message: "No files uploaded",
@@ -212,7 +219,7 @@ export const uploadKycFiles = async (req, res) => {
         resourceType = "video";
       }
 
-      return {
+      const fileData = {
         url: file.path,
         publicId: file.filename,
         format: file.mimetype.split("/")[1],
@@ -220,6 +227,19 @@ export const uploadKycFiles = async (req, res) => {
         originalName: file.originalname,
         resourceType: resourceType,
       };
+      
+      console.log("[Upload KYC] File processed:", {
+        originalName: file.originalname,
+        url: file.path ? file.path.substring(0, 80) + "..." : "MISSING",
+        publicId: file.filename ? file.filename.substring(0, 40) + "..." : "MISSING",
+      });
+      
+      return fileData;
+    });
+
+    console.log("[Upload KYC] SUCCESS:", { 
+      filesCount: filesData.length, 
+      urls: filesData.map(f => f.url ? "OK" : "NULL") 
     });
 
     return res.status(200).json({
@@ -228,6 +248,7 @@ export const uploadKycFiles = async (req, res) => {
       data: filesData,
     });
   } catch (error) {
+    console.error("[Upload KYC] ERROR:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "KYC file upload failed",

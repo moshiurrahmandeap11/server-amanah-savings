@@ -311,7 +311,24 @@ export const getKycApplications = async (req, res) => {
     const usersCollection = db.collection("users");
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const limitNum = parseInt(limit);
-    const filter = { "kyc.nidNumber": { $exists: true, $ne: null } };
+    
+    // Filter: users who have submitted KYC (not skipped) OR have KYC documents
+    const filter = {
+      $or: [
+        { "kyc.status": { $in: ["pending", "approved", "rejected"] } },
+        { "kyc.nidFrontImage": { $exists: true, $ne: null, $ne: "" } },
+        { "kyc.nidBackImage": { $exists: true, $ne: null, $ne: "" } },
+        { "kyc.selfieImage": { $exists: true, $ne: null, $ne: "" } },
+        { "kyc.birthCertificateImage": { $exists: true, $ne: null, $ne: "" } },
+        { "kyc.passportImage": { $exists: true, $ne: null, $ne: "" } },
+      ],
+    };
+    
+    // Also exclude users who skipped KYC and have no documents
+    filter.$nor = [
+      { "kyc.status": "skipped", "kyc.nidFrontImage": null, "kyc.selfieImage": null, "kyc.birthCertificateImage": null }
+    ];
+    
     if (status) filter["kyc.status"] = status;
     if (search) {
       filter.$or = [
@@ -332,6 +349,23 @@ export const getKycApplications = async (req, res) => {
         .toArray(),
       usersCollection.countDocuments(filter),
     ]);
+    
+    // Debug log
+    console.log(`[KYC API] Found ${users.length} users, total: ${total}`);
+    if (users.length > 0) {
+      const firstUser = users[0];
+      console.log(`[KYC API] First user KYC data:`, {
+        id: firstUser._id,
+        nidNumber: firstUser.kyc?.nidNumber,
+        nidFrontImage: firstUser.kyc?.nidFrontImage ? "PRESENT" : "NULL",
+        nidBackImage: firstUser.kyc?.nidBackImage ? "PRESENT" : "NULL",
+        selfieImage: firstUser.kyc?.selfieImage ? "PRESENT" : "NULL",
+        birthCertificateImage: firstUser.kyc?.birthCertificateImage ? "PRESENT" : "NULL",
+        passportImage: firstUser.kyc?.passportImage ? "PRESENT" : "NULL",
+        kycStatus: firstUser.kyc?.status,
+      });
+    }
+    
     const formattedApplications = users.map((user) => ({
       id: user._id,
       firstName: user.firstName,
@@ -341,22 +375,38 @@ export const getKycApplications = async (req, res) => {
         `${user.firstName || ""} ${user.lastName || ""}`.trim(),
       phone: user.phone,
       email: user.email,
-      nidNumber: user.kyc?.nidNumber,
+      nidNumber: user.kyc?.nidNumber || null,
       kycStatus: user.kyc?.status || "pending",
       kycSubmittedAt: user.kyc?.submittedAt,
       kycVerifiedAt: user.kyc?.verifiedAt,
       kycRejectionReason: user.kyc?.rejectionReason,
       islamicMode: user.kyc?.islamicMode || false,
+      kycConsent: user.kyc?.kycConsent || false,
       accountActive: user.accountActive || false,
       selectedPlan: user.selectedPlan,
       profilePicture: user.profilePicture,
       division: user.division,
       district: user.district,
+      upazila: user.upazila,
+      village: user.village,
+      postOffice: user.postOffice,
+      postCode: user.postCode,
       occupation: user.occupation,
+      income: user.income,
+      dob: user.dob,
+      gender: user.gender,
       createdAt: user.createdAt,
-      nidFrontUrl: user.nidFrontUrl || null,
-      nidBackUrl: user.nidBackUrl || null,
-      selfieUrl: user.selfieUrl || null,
+      // KYC Document URLs - check both nested kyc object and root level (fallback)
+      nidFrontUrl: user.kyc?.nidFrontImage || user.nidFrontImage || null,
+      nidBackUrl: user.kyc?.nidBackImage || user.nidBackImage || null,
+      selfieUrl: user.kyc?.selfieImage || user.selfieImage || null,
+      birthCertificateUrl: user.kyc?.birthCertificateImage || user.birthCertificateImage || null,
+      passportUrl: user.kyc?.passportImage || user.passportImage || null,
+      // Nominee info
+      nominee: user.nominee || null,
+      // Payment info
+      paymentMethod: user.paymentMethod,
+      paymentDetails: user.paymentDetails || null,
     }));
     return res.status(200).json({
       success: true,

@@ -400,10 +400,13 @@ export const register = async (req, res) => {
     };
 
     console.log("Creating user with KYC data:", {
-      nidFront: newUser.kyc.nidFrontImage ? "Present" : "Missing",
-      nidBack: newUser.kyc.nidBackImage ? "Present" : "Missing",
-      selfie: newUser.kyc.selfieImage ? "Present" : "Missing",
+      nidFront: newUser.kyc.nidFrontImage ? `Present (length: ${newUser.kyc.nidFrontImage.length})` : "Missing",
+      nidBack: newUser.kyc.nidBackImage ? `Present (length: ${newUser.kyc.nidBackImage.length})` : "Missing",
+      selfie: newUser.kyc.selfieImage ? `Present (length: ${newUser.kyc.selfieImage.length})` : "Missing",
+      birthCert: newUser.kyc.birthCertificateImage ? "Present" : "Missing",
+      passport: newUser.kyc.passportImage ? "Present" : "Missing",
       kycStatus: newUser.kyc.status,
+      nidNumber: newUser.kyc.nidNumber,
     });
 
     const result = await usersCollection.insertOne(newUser);
