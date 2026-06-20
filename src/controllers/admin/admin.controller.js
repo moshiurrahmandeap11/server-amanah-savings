@@ -327,17 +327,18 @@ export const getKycApplications = async (req, res) => {
     conditions.push({ $or: kycConditions });
     
     // Condition 2: Exclude users who skipped KYC and have NO documents at all
+    // Using $nor because $not is not valid as a top-level operator in MongoDB
     conditions.push({
-      $not: {
-        $and: [
-          { "kyc.status": "skipped" },
-          { "kyc.nidFrontImage": { $in: [null, ""], $exists: true } },
-          { "kyc.nidBackImage": { $in: [null, ""], $exists: true } },
-          { "kyc.selfieImage": { $in: [null, ""], $exists: true } },
-          { "kyc.birthCertificateImage": { $in: [null, ""], $exists: true } },
-          { "kyc.passportImage": { $in: [null, ""], $exists: true } },
-        ]
-      }
+      $nor: [
+        {
+          "kyc.status": "skipped",
+          "kyc.nidFrontImage": { $in: [null, ""], $exists: true },
+          "kyc.nidBackImage": { $in: [null, ""], $exists: true },
+          "kyc.selfieImage": { $in: [null, ""], $exists: true },
+          "kyc.birthCertificateImage": { $in: [null, ""], $exists: true },
+          "kyc.passportImage": { $in: [null, ""], $exists: true },
+        }
+      ]
     });
     
     // Condition 3: Status filter (if provided)
