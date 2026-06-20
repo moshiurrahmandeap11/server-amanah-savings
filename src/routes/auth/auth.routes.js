@@ -15,6 +15,7 @@ import {
   deleteAccount,
   getUserById,
   searchUserByPhone,
+  uploadKycDocuments, // Add this
 } from "../../controllers/auth/auth.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
 import { uploadSingle } from "../../middlewares/upload.js";
@@ -51,6 +52,9 @@ router.post(
 );
 router.delete("/profile-picture", verifyToken, deleteProfilePicture);
 
+// KYC Documents (NEW ROUTE)
+router.post("/kyc-documents", verifyToken, uploadKycDocuments);
+
 // Nominee
 router.put("/nominee", verifyToken, updateNominee);
 
@@ -60,6 +64,7 @@ router.put("/payment-method", verifyToken, updatePaymentMethod);
 // Account
 router.delete("/account", verifyToken, deleteAccount);
 
-router.get("/search", verifyToken, searchUserByPhone); 
+// Search User
+router.get("/search", verifyToken, searchUserByPhone);
 
 export default router;

@@ -27,10 +27,21 @@ const generateOTP = () => {
 
 // ==================== REGISTRATION ====================
 
+// In auth.controller.js - Update the register function
+
+// auth.controller.js - Updated register function with better debugging
+
 export const register = async (req, res) => {
   try {
     console.log("=== Received Registration Data ===");
     console.log("Request Body:", req.body);
+    console.log("KYC Images Check:", {
+      nidFront: req.body.nidFrontImage ? "Present (length: " + req.body.nidFrontImage.length + ")" : "Missing",
+      nidBack: req.body.nidBackImage ? "Present (length: " + req.body.nidBackImage.length + ")" : "Missing",
+      selfie: req.body.selfieImage ? "Present (length: " + req.body.selfieImage.length + ")" : "Missing",
+      birthCert: req.body.birthCertificateImage ? "Present" : "Missing",
+      passport: req.body.passportImage ? "Present" : "Missing",
+    });
 
     const {
       // Step 1 - Account
@@ -73,6 +84,13 @@ export const register = async (req, res) => {
 
       // Step 8 - KYC
       nidNumber,
+      nidFrontImage,
+      nidBackImage,
+      birthCertificateImage,
+      selfieImage,
+      passportImage,
+      kycConsent,
+      kycSkipped,
       islamicMode,
 
       // Step 9 - Payment
@@ -89,10 +107,9 @@ export const register = async (req, res) => {
       terms,
       withdrawalPolicy,
       marketing,
-      kycConsent,
     } = req.body;
 
-    // Required fields validation
+    // Required fields validation - UPDATED
     const requiredFields = [];
     if (!firstName) requiredFields.push("firstName");
     if (!phone) requiredFields.push("phone");
@@ -105,13 +122,41 @@ export const register = async (req, res) => {
     if (!nomineePhone) requiredFields.push("nomineePhone");
     if (!selectedPlan) requiredFields.push("selectedPlan");
     if (!pin) requiredFields.push("pin");
-    if (!nidNumber) requiredFields.push("nidNumber");
     if (!terms) requiredFields.push("terms");
     if (!withdrawalPolicy) requiredFields.push("withdrawalPolicy");
     if (!paymentMethod) requiredFields.push("paymentMethod");
-    if (!kycConsent) requiredFields.push("kycConsent");
+
+    // KYC validation - UPDATED: Check if kycSkipped is false or undefined
+    const isKycSkipped = kycSkipped === true || kycSkipped === "true";
+    
+    console.log("KYC Skipped:", isKycSkipped);
+
+    if (!isKycSkipped) {
+      // Check if KYC consent is given
+      if (!kycConsent) requiredFields.push("kycConsent");
+      
+      // Check NID or Birth Certificate
+      const hasNidFront = nidFrontImage && nidFrontImage.trim() !== '';
+      const hasNidBack = nidBackImage && nidBackImage.trim() !== '';
+      const hasBirthCert = birthCertificateImage && birthCertificateImage.trim() !== '';
+      
+      console.log("KYC Document Check:", { hasNidFront, hasNidBack, hasBirthCert });
+      
+      if (!hasNidFront && !hasNidBack && !hasBirthCert) {
+        requiredFields.push("nidFrontImage or birthCertificateImage");
+      }
+      
+      // Check Selfie
+      const hasSelfie = selfieImage && selfieImage.trim() !== '';
+      console.log("Selfie Check:", hasSelfie);
+      
+      if (!hasSelfie) {
+        requiredFields.push("selfieImage");
+      }
+    }
 
     if (requiredFields.length > 0) {
+      console.log("Missing required fields:", requiredFields);
       return res.status(400).json({
         success: false,
         message: `Missing required fields: ${requiredFields.join(", ")}`,
@@ -196,10 +241,10 @@ export const register = async (req, res) => {
     // Create full name
     const fullName = `${firstName} ${lastName || ""}`.trim();
 
-    // Generate referral code for user
+    // Generate referral code
     const userReferralCode = `${firstName.substring(0, 3).toUpperCase()}${Math.floor(Math.random() * 10000)}`;
 
-    // Check if referral code is valid
+    // Check referral code
     let referrerId = null;
     if (referralCode) {
       const referrer = await usersCollection.findOne({
@@ -210,7 +255,13 @@ export const register = async (req, res) => {
       }
     }
 
-    // Create user document with role field
+    // Determine KYC status
+    let kycStatus = "pending";
+    if (isKycSkipped) {
+      kycStatus = "skipped";
+    }
+
+    // Create user document
     const newUser = {
       // Personal Information
       firstName,
@@ -243,7 +294,7 @@ export const register = async (req, res) => {
         postCode: postCode || null,
       },
 
-      // Nominee Information
+      // Nominee
       nominee: {
         firstName: nomineeFirstName,
         lastName: nomineeLastName || null,
@@ -265,14 +316,21 @@ export const register = async (req, res) => {
         progress: 0,
       },
 
-      // KYC
+      // KYC with Documents
       kyc: {
-        nidNumber,
-        status: "pending",
+        nidNumber: nidNumber || null,
+        nidFrontImage: nidFrontImage || null,
+        nidBackImage: nidBackImage || null,
+        birthCertificateImage: birthCertificateImage || null,
+        selfieImage: selfieImage || null,
+        passportImage: passportImage || null,
+        kycConsent: kycConsent || false,
+        status: kycStatus,
         submittedAt: new Date(),
         verifiedAt: null,
         rejectionReason: null,
         islamicMode: islamicMode || false,
+        skipped: isKycSkipped || false,
       },
 
       // Payment Method
@@ -305,8 +363,8 @@ export const register = async (req, res) => {
       termsAccepted: terms,
       withdrawalPolicyAccepted: withdrawalPolicy,
 
-      // Account Status - ROLE FIELD ADDED HERE
-      role: "user", // Default role for all new registrations
+      // Account Status
+      role: "user",
       level: 1,
       streak: 0,
       totalSaved: 0,
@@ -325,6 +383,13 @@ export const register = async (req, res) => {
       lastLogin: null,
     };
 
+    console.log("Creating user with KYC data:", {
+      nidFront: newUser.kyc.nidFrontImage ? "Present" : "Missing",
+      nidBack: newUser.kyc.nidBackImage ? "Present" : "Missing",
+      selfie: newUser.kyc.selfieImage ? "Present" : "Missing",
+      kycStatus: newUser.kyc.status,
+    });
+
     const result = await usersCollection.insertOne(newUser);
     const user = { ...newUser, _id: result.insertedId };
 
@@ -337,7 +402,7 @@ export const register = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Registration successful! Please complete KYC verification.",
+      message: "Registration successful!",
       data: {
         token,
         user: {
@@ -361,6 +426,62 @@ export const register = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Registration failed",
+    });
+  }
+};
+
+// Add this function to handle KYC document uploads separately (optional)
+export const uploadKycDocuments = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {
+      nidNumber,
+      nidFrontImage,
+      nidBackImage,
+      birthCertificateImage,
+      selfieImage,
+      passportImage,
+      kycConsent,
+    } = req.body;
+
+    const usersCollection = db.collection("users");
+
+    const updateData = {
+      $set: {
+        "kyc.nidNumber": nidNumber || null,
+        "kyc.nidFrontImage": nidFrontImage || null,
+        "kyc.nidBackImage": nidBackImage || null,
+        "kyc.birthCertificateImage": birthCertificateImage || null,
+        "kyc.selfieImage": selfieImage || null,
+        "kyc.passportImage": passportImage || null,
+        "kyc.kycConsent": kycConsent || false,
+        "kyc.status": "pending",
+        "kyc.submittedAt": new Date(),
+        updatedAt: new Date(),
+      },
+    };
+
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      updateData,
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "KYC documents uploaded successfully",
+    });
+  } catch (error) {
+    console.error("Upload KYC documents error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to upload KYC documents",
     });
   }
 };
