@@ -475,6 +475,18 @@ export const uploadKycDocuments = async (req, res) => {
     });
 
     const usersCollection = db.collection("users");
+    
+    // First, check if user exists
+    const existingUser = await usersCollection.findOne({ _id: new ObjectId(userId) });
+    console.log("[uploadKycDocuments] Existing user found:", existingUser ? "YES" : "NO");
+    if (existingUser) {
+      console.log("[uploadKycDocuments] Existing user KYC data:", {
+        nidNumber: existingUser.kyc?.nidNumber,
+        nidFrontImage: existingUser.kyc?.nidFrontImage ? "PRESENT" : "NULL",
+        nidBackImage: existingUser.kyc?.nidBackImage ? "PRESENT" : "NULL",
+        selfieImage: existingUser.kyc?.selfieImage ? "PRESENT" : "NULL",
+      });
+    }
 
     const updateData = {
       $set: {
@@ -501,6 +513,17 @@ export const uploadKycDocuments = async (req, res) => {
     console.log("[uploadKycDocuments] MongoDB result:", {
       matchedCount: result.matchedCount,
       modifiedCount: result.modifiedCount,
+    });
+    
+    // Verify the update
+    const updatedUser = await usersCollection.findOne({ _id: new ObjectId(userId) });
+    console.log("[uploadKycDocuments] Updated user KYC data:", {
+      nidNumber: updatedUser.kyc?.nidNumber,
+      nidFrontImage: updatedUser.kyc?.nidFrontImage ? "PRESENT (length: " + updatedUser.kyc.nidFrontImage.length + ")" : "NULL",
+      nidBackImage: updatedUser.kyc?.nidBackImage ? "PRESENT (length: " + updatedUser.kyc.nidBackImage.length + ")" : "NULL",
+      selfieImage: updatedUser.kyc?.selfieImage ? "PRESENT (length: " + updatedUser.kyc.selfieImage.length + ")" : "NULL",
+      kycStatus: updatedUser.kyc?.status,
+      kycSubmittedAt: updatedUser.kyc?.submittedAt,
     });
 
     if (result.matchedCount === 0) {
