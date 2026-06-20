@@ -15,6 +15,7 @@ import {
   deleteAccount,
   getUserById,
   searchUserByPhone,
+  validateReferralCode,
   uploadKycDocuments, // Add this
 } from "../../controllers/auth/auth.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
@@ -33,6 +34,9 @@ router.post("/verify-email-otp", verifyEmailOtp);
 
 // Login
 router.post("/login", login);
+
+// Referral code validation
+router.get("/validate-referral/:code", validateReferralCode);
 
 // ==================== PROTECTED ROUTES ====================
 

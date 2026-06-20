@@ -2,6 +2,8 @@
 import { db } from "../../database/db.js";
 import { ObjectId } from "mongodb";
 
+const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // Generate unique referral code
 const generateReferralCode = (name) => {
   const prefix = name?.slice(0, 4).toUpperCase() || "USER";
@@ -13,8 +15,9 @@ const generateReferralCode = (name) => {
 export const createReferral = async (req, res) => {
   try {
     const { referralCode, newUserId } = req.body;
+    const normalizedReferralCode = String(referralCode || "").trim().toUpperCase();
 
-    if (!referralCode || !newUserId) {
+    if (!normalizedReferralCode || !newUserId) {
       return res.status(400).json({
         success: false,
         message: "Referral code and new user ID are required",
@@ -26,7 +29,7 @@ export const createReferral = async (req, res) => {
 
     // Find the referrer user
     const referrer = await usersCollection.findOne({
-      referralCode: referralCode,
+      referralCode: { $regex: `^${escapeRegex(normalizedReferralCode)}$`, $options: "i" },
     });
 
     if (!referrer) {
@@ -50,9 +53,10 @@ export const createReferral = async (req, res) => {
     });
 
     if (existingReferral) {
-      return res.status(400).json({
-        success: false,
-        message: "User already has a referrer",
+      return res.status(200).json({
+        success: true,
+        message: "Referral already recorded",
+        data: existingReferral,
       });
     }
 
@@ -60,7 +64,7 @@ export const createReferral = async (req, res) => {
     const referral = {
       referrerId: referrer._id,
       referredUserId: new ObjectId(newUserId),
-      referralCode: referralCode,
+      referralCode: referrer.referralCode || normalizedReferralCode,
       status: "pending", // pending, active, completed
       bonusPaid: false,
       referrerBonusPaid: false,
@@ -76,7 +80,7 @@ export const createReferral = async (req, res) => {
       { _id: referrer._id },
       {
         $inc: { totalReferrals: 1 },
-        $push: { referredUsers: new ObjectId(newUserId) },
+        $addToSet: { referredUsers: new ObjectId(newUserId) },
       }
     );
 
@@ -86,7 +90,7 @@ export const createReferral = async (req, res) => {
       {
         $set: {
           referredBy: referrer._id,
-          referredByCode: referralCode,
+          referredByCode: referrer.referralCode || normalizedReferralCode,
         },
       }
     );
@@ -432,11 +436,13 @@ export const getReferralStats = async (req, res) => {
       },
     ]).toArray();
 
+    const frontendUrl = process.env.FRONTEND_URL || "https://sanchoybondhu.com";
+
     return res.status(200).json({
       success: true,
       data: {
         referralCode,
-        referralLink: `https://sanchoybondhu.com/?ref=${referralCode}`,
+        referralLink: `${frontendUrl.replace(/\/$/, "")}/register?ref=${encodeURIComponent(referralCode)}`,
         stats: {
           totalReferrals,
           activeReferrals,

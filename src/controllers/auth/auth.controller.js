@@ -25,6 +25,23 @@ const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
+const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const generateUniqueReferralCode = async (usersCollection, firstName = "USER") => {
+  const prefix = String(firstName || "USER")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(0, 4)
+    .toUpperCase() || "USER";
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const code = `${prefix}${Math.floor(1000 + Math.random() * 9000)}`;
+    const existingUser = await usersCollection.findOne({ referralCode: code });
+    if (!existingUser) return code;
+  }
+
+  return `${prefix}${Date.now().toString().slice(-6)}`;
+};
+
 // ==================== REGISTRATION ====================
 
 // In auth.controller.js - Update the register function
@@ -60,6 +77,9 @@ export const register = async (req, res) => {
       occupation,
       income,
       referralCode,
+      referalCode,
+      referral,
+      ref,
       village,
       postOffice,
       postCode,
@@ -257,18 +277,30 @@ export const register = async (req, res) => {
     // Create full name
     const fullName = `${firstName} ${lastName || ""}`.trim();
 
-    // Generate referral code
-    const userReferralCode = `${firstName.substring(0, 3).toUpperCase()}${Math.floor(Math.random() * 10000)}`;
+    // Generate unique referral code for the new user
+    const userReferralCode = await generateUniqueReferralCode(usersCollection, firstName);
 
-    // Check referral code
+    // Check referral code. Accept common client field names to avoid form/API mismatches.
     let referrerId = null;
-    if (referralCode) {
+    let referredByCode = null;
+    const submittedReferralCode = String(referralCode || referalCode || referral || ref || "")
+      .trim()
+      .toUpperCase();
+
+    if (submittedReferralCode) {
       const referrer = await usersCollection.findOne({
-        referralCode: referralCode.toUpperCase(),
+        referralCode: { $regex: `^${escapeRegex(submittedReferralCode)}$`, $options: "i" },
       });
-      if (referrer) {
-        referrerId = referrer._id;
+
+      if (!referrer) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid referral code",
+        });
       }
+
+      referrerId = referrer._id;
+      referredByCode = referrer.referralCode || submittedReferralCode;
     }
 
     // Determine KYC status
@@ -372,6 +404,7 @@ export const register = async (req, res) => {
       // Referral
       referralCode: userReferralCode,
       referredBy: referrerId,
+      referredByCode,
       referralBonusApplied: false,
 
       // Settings
@@ -411,6 +444,34 @@ export const register = async (req, res) => {
 
     const result = await usersCollection.insertOne(newUser);
     const user = { ...newUser, _id: result.insertedId };
+
+    if (referrerId && referredByCode) {
+      const referralsCollection = db.collection("referrals");
+      const now = new Date();
+      const referralRecord = {
+        referrerId,
+        referredUserId: result.insertedId,
+        referralCode: referredByCode,
+        status: "pending",
+        bonusPaid: false,
+        referrerBonusPaid: false,
+        referredBonusPaid: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      await Promise.all([
+        referralsCollection.insertOne(referralRecord),
+        usersCollection.updateOne(
+          { _id: referrerId },
+          {
+            $inc: { totalReferrals: 1 },
+            $addToSet: { referredUsers: result.insertedId },
+            $set: { updatedAt: now },
+          }
+        ),
+      ]);
+    }
 
     // Generate JWT token
     const token = generateToken(user);
@@ -460,6 +521,57 @@ export const register = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Registration failed",
+    });
+  }
+};
+
+export const validateReferralCode = async (req, res) => {
+  try {
+    const code = String(req.params.code || req.query.code || "")
+      .trim()
+      .toUpperCase();
+
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        message: "Referral code is required",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+    const referrer = await usersCollection.findOne(
+      {
+        referralCode: { $regex: `^${escapeRegex(code)}$`, $options: "i" },
+      },
+      {
+        projection: {
+          password: 0,
+          pin: 0,
+        },
+      }
+    );
+
+    if (!referrer) {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid referral code",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Referral code is valid",
+      data: {
+        referralCode: referrer.referralCode,
+        referrerId: referrer._id,
+        referrerName: referrer.fullName || referrer.firstName || "Sanchoy user",
+      },
+    });
+  } catch (error) {
+    console.error("Validate referral code error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to validate referral code",
     });
   }
 };
