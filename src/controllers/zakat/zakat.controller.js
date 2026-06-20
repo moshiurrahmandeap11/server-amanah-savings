@@ -8,12 +8,12 @@ export const calculateZakat = async (req, res) => {
     const userId = req.user._id;
     const {
       goldRate,
+      silverRate,
       assets,
       liabilities,
     } = req.body;
 
     const ZAKAT_RATE = 0.025;
-    const SILVER_RATE_PER_G = 130;
 
     // Validate inputs
     if (!goldRate || goldRate <= 0) {
@@ -23,14 +23,17 @@ export const calculateZakat = async (req, res) => {
       });
     }
 
+    // Use silver rate from user input or default
+    const silverRatePerGram = silverRate || 130;
+
     // Calculate total assets
     const totalAssets = 
       (assets?.cash || 0) +
-      (assets?.amanah || 0) +
+      (assets?.sanchoy || 0) +
       (assets?.mobile || 0) +
       (assets?.invest || 0) +
       ((assets?.gold_g || 0) * goldRate) +
-      ((assets?.silver_g || 0) * SILVER_RATE_PER_G) +
+      ((assets?.silver_g || 0) * silverRatePerGram) +
       (assets?.stock || 0) +
       (assets?.recv || 0);
 
@@ -52,12 +55,16 @@ export const calculateZakat = async (req, res) => {
     // Calculate zakat due
     const zakatDue = aboveNisab ? net * ZAKAT_RATE : 0;
 
+    // Round to 2 decimal places
+    const roundedZakatDue = Math.round(zakatDue * 100) / 100;
+
     // Save calculation to history
     const zakatCollection = db.collection("zakat_calculations");
     
     const calculation = {
       userId: new ObjectId(userId),
       goldRate,
+      silverRate: silverRatePerGram,
       assets,
       liabilities,
       totalAssets,
@@ -65,7 +72,7 @@ export const calculateZakat = async (req, res) => {
       net,
       nisab,
       aboveNisab,
-      zakatDue,
+      zakatDue: roundedZakatDue,
       calculatedAt: new Date(),
     };
 
@@ -79,8 +86,8 @@ export const calculateZakat = async (req, res) => {
         net,
         nisab,
         aboveNisab,
-        zakatDue: Math.round(zakatDue),
-        zakatDueFormatted: `৳${Math.round(zakatDue).toLocaleString()}`,
+        zakatDue: roundedZakatDue,
+        zakatDueFormatted: `৳${Math.round(roundedZakatDue).toLocaleString()}`,
       },
     });
   } catch (error) {
@@ -370,6 +377,7 @@ export const saveZakatCalculation = async (req, res) => {
     const userId = req.user._id;
     const {
       goldRate,
+      silverRate,
       assets,
       liabilities,
       totalAssets,
@@ -385,6 +393,7 @@ export const saveZakatCalculation = async (req, res) => {
     const calculation = {
       userId: new ObjectId(userId),
       goldRate,
+      silverRate: silverRate || 130,
       assets,
       liabilities,
       totalAssets,

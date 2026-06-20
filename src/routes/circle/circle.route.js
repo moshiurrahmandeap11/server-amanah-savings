@@ -7,6 +7,9 @@ import {
   joinCircle,
   leaveCircle,
   getPublicCircles,
+  generateInviteLink,
+  joinCircleByInvite,
+  deleteCircle,
 } from "../../controllers/circle/circle.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
 
@@ -22,6 +25,11 @@ router.get("/", getUserCircles);                   // Get user's circles
 router.get("/public", getPublicCircles);            // Get public circles for discovery
 router.get("/:id", getCircleById);                 // Get single circle
 router.post("/:id/join", joinCircle);              // Join a circle
-router.delete("/:id/leave", leaveCircle);          // Leave a circle
+router.delete("/:id/leave", leaveCircle);    
+
+router.post("/:id/invite", generateInviteLink);        // Generate invite link
+router.post("/join/:inviteCode", joinCircleByInvite); // Leave a circle
+
+router.delete("/:id", deleteCircle);                   
 
 export default router;

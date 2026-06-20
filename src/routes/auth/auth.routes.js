@@ -14,6 +14,7 @@ import {
   deleteProfilePicture,
   deleteAccount,
   getUserById,
+  searchUserByPhone,
 } from "../../controllers/auth/auth.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
 import { uploadSingle } from "../../middlewares/upload.js";
@@ -58,5 +59,7 @@ router.put("/payment-method", verifyToken, updatePaymentMethod);
 
 // Account
 router.delete("/account", verifyToken, deleteAccount);
+
+router.get("/search", verifyToken, searchUserByPhone); 
 
 export default router;

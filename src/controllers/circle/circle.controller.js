@@ -513,3 +513,248 @@ function getCircleColor(purpose) {
   };
   return colorMap[purpose?.toLowerCase()] || "from-primary to-primary-light";
 }
+
+
+// Generate invite link for private circle
+export const generateInviteLink = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid circle ID",
+      });
+    }
+
+    const circlesCollection = db.collection("circles");
+
+    const circle = await circlesCollection.findOne({
+      _id: new ObjectId(id),
+      "members.userId": new ObjectId(userId),
+    });
+
+    if (!circle) {
+      return res.status(404).json({
+        success: false,
+        message: "Circle not found",
+      });
+    }
+
+    // Check if user is admin
+    const userMember = circle.members.find(
+      member => member.userId.toString() === userId
+    );
+
+    if (userMember?.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can generate invite links",
+      });
+    }
+
+    // Generate unique invite code
+    const inviteCode = generateInviteCode();
+    const inviteExpiry = new Date();
+    inviteExpiry.setDate(inviteExpiry.getDate() + 7); // 7 days expiry
+
+    await circlesCollection.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          inviteCode,
+          inviteExpiry,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        inviteCode,
+        inviteLink: `${process.env.FRONTEND_URL}/dashboard/circles/join/${inviteCode}`,
+        expiryDate: inviteExpiry,
+      },
+    });
+  } catch (error) {
+    console.error("Generate invite link error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to generate invite link",
+    });
+  }
+};
+
+// Join circle via invite code
+export const joinCircleByInvite = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { inviteCode } = req.params;
+
+    const circlesCollection = db.collection("circles");
+    const usersCollection = db.collection("users");
+
+    const circle = await circlesCollection.findOne({
+      inviteCode,
+      status: "active",
+    });
+
+    if (!circle) {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid or expired invite link",
+      });
+    }
+
+    // Check if invite is expired
+    if (circle.inviteExpiry && new Date(circle.inviteExpiry) < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: "Invite link has expired",
+      });
+    }
+
+    // Check if user is already a member
+    const isMember = circle.members.some(
+      member => member.userId.toString() === userId
+    );
+
+    if (isMember) {
+      return res.status(400).json({
+        success: false,
+        message: "You are already a member of this circle",
+      });
+    }
+
+    // Check if circle is full
+    if (circle.currentMembers >= circle.maxMembers) {
+      return res.status(400).json({
+        success: false,
+        message: "Circle is full",
+      });
+    }
+
+    // Add user to circle
+    await circlesCollection.updateOne(
+      { _id: circle._id },
+      {
+        $push: {
+          members: {
+            userId: new ObjectId(userId),
+            joinedAt: new Date(),
+            role: "member",
+            totalDeposited: 0,
+          },
+        },
+        $inc: { currentMembers: 1 },
+        $set: { updatedAt: new Date() },
+      }
+    );
+
+    // Add circle to user's circles array
+    await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $push: {
+          circles: {
+            circleId: circle._id,
+            circleName: circle.circleName,
+            role: "member",
+            joinedAt: new Date(),
+          },
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Successfully joined the circle",
+      data: { circleId: circle._id },
+    });
+  } catch (error) {
+    console.error("Join circle by invite error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to join circle",
+    });
+  }
+};
+
+// Delete a circle (only admin)
+export const deleteCircle = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid circle ID",
+      });
+    }
+
+    const circlesCollection = db.collection("circles");
+    const usersCollection = db.collection("users");
+
+    const circle = await circlesCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!circle) {
+      return res.status(404).json({
+        success: false,
+        message: "Circle not found",
+      });
+    }
+
+    // Check if user is admin
+    const userMember = circle.members.find(
+      member => member.userId.toString() === userId
+    );
+
+    if (!userMember || userMember.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can delete the circle",
+      });
+    }
+
+    // Remove circle from all members' circles array
+    const memberIds = circle.members.map(m => m.userId);
+    
+    for (const memberId of memberIds) {
+      await usersCollection.updateOne(
+        { _id: memberId },
+        {
+          $pull: { circles: { circleId: new ObjectId(id) } },
+        }
+      );
+    }
+
+    // Delete the circle
+    await circlesCollection.deleteOne({ _id: new ObjectId(id) });
+
+    return res.status(200).json({
+      success: true,
+      message: "Circle deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete circle error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to delete circle",
+    });
+  }
+};
+
+// Helper function to generate invite code
+function generateInviteCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < 8; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}

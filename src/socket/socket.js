@@ -1,3 +1,4 @@
+// socket/socket.js (server side)
 import { Server } from "socket.io";
 import { db } from "../database/db.js";
 import { ObjectId } from "mongodb";
@@ -7,7 +8,7 @@ let io = null;
 export const initSocketIO = (httpServer) => {
   io = new Server(httpServer, {
     cors: {
-      origin: ["http://localhost:3000", "https://amanah-savings.vercel.app"],
+      origin: ["http://localhost:3000", "https://sanchoybondhu.com"],
       credentials: true,
     },
   });
@@ -24,15 +25,37 @@ export const initSocketIO = (httpServer) => {
     });
 
     // Join admin room for admin notifications
-    socket.on("join_admin", () => {
+    socket.on("join_admin_room", (data) => {
+      const { adminId } = data || {};
       socket.join("admin");
-      console.log(`Socket ${socket.id} joined admin room`);
+      if (adminId) {
+        socket.join(`admin_${adminId}`);
+      }
+      console.log(`Socket ${socket.id} joined admin room, adminId: ${adminId}`);
+    });
+
+    // Join ticket room for ticket-specific chat
+    socket.on("join_ticket_room", (data) => {
+      const { ticketId, userId } = data || {};
+      if (ticketId) {
+        socket.join(`ticket_${ticketId}`);
+        console.log(`Socket ${socket.id} joined ticket room: ${ticketId}`);
+      }
+    });
+
+    // Leave ticket room
+    socket.on("leave_ticket_room", (data) => {
+      const { ticketId } = data || {};
+      if (ticketId) {
+        socket.leave(`ticket_${ticketId}`);
+        console.log(`Socket ${socket.id} left ticket room: ${ticketId}`);
+      }
     });
 
     // Handle messaging
     socket.on("send_message", async (data) => {
       try {
-        const { senderId, receiverId, message, senderRole = "user" } = data;
+        const { senderId, receiverId, message, senderRole = "user", ticketId } = data;
         if (!senderId || !receiverId || !message) return;
 
         const messagesCollection = db.collection("messages");
@@ -41,15 +64,33 @@ export const initSocketIO = (httpServer) => {
           receiverId: new ObjectId(receiverId),
           message,
           senderRole,
+          ticketId: ticketId || null,
           read: false,
           createdAt: new Date(),
         };
         const result = await messagesCollection.insertOne(newMessage);
         const msgWithId = { ...newMessage, _id: result.insertedId };
 
-        // Emit to both sender and receiver rooms
-        io.to(`user_${receiverId}`).emit("new_message", msgWithId);
-        io.to(`user_${senderId}`).emit("message_sent", msgWithId);
+        // Emit to receiver's user room
+        io.to(`user_${receiverId}`).emit("receive_message", msgWithId);
+        
+        // Emit to sender's user room (for real-time feedback)
+        io.to(`user_${senderId}`).emit("receive_message", msgWithId);
+        
+        // Also emit to admin room if sender is admin
+        if (senderRole === "admin") {
+          io.to("admin").emit("receive_message", msgWithId);
+          if (receiverId) {
+            io.to(`admin_${receiverId}`).emit("receive_message", msgWithId);
+          }
+        }
+        
+        // Emit to ticket room if ticketId exists
+        if (ticketId) {
+          io.to(`ticket_${ticketId}`).emit("receive_message", msgWithId);
+        }
+        
+        console.log("Message sent:", msgWithId);
       } catch (err) {
         console.error("Socket send_message error:", err);
       }
@@ -72,8 +113,10 @@ export const initSocketIO = (httpServer) => {
 
     // Typing indicator
     socket.on("typing", (data) => {
-      const { receiverId, senderName } = data;
-      io.to(`user_${receiverId}`).emit("typing", { senderName });
+      const { receiverId, userId, userType } = data;
+      if (receiverId) {
+        io.to(`user_${receiverId}`).emit("typing", { userId, userType });
+      }
     });
 
     socket.on("disconnect", () => {

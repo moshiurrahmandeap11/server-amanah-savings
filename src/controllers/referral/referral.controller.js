@@ -436,7 +436,7 @@ export const getReferralStats = async (req, res) => {
       success: true,
       data: {
         referralCode,
-        referralLink: `https://amanahsavings.com.bd/?ref=${referralCode}`,
+        referralLink: `https://sanchoybondhu.com/?ref=${referralCode}`,
         stats: {
           totalReferrals,
           activeReferrals,

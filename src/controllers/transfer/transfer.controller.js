@@ -2,6 +2,44 @@
 import { db } from "../../database/db.js";
 import { ObjectId } from "mongodb";
 
+// Helper function to normalize phone numbers for search
+const normalizePhoneForSearch = (phone) => {
+  if (!phone) return null;
+  
+  // Remove all non-digit characters
+  let cleaned = phone.replace(/\D/g, '');
+  
+  // If it's 10 digits and starts with 1, it might be missing leading 0
+  if (cleaned.length === 10 && cleaned.startsWith('1')) {
+    cleaned = '0' + cleaned;
+  }
+  
+  // If it has 88 (country code without +), remove it
+  if (cleaned.startsWith('88')) {
+    cleaned = cleaned.substring(2);
+  }
+  
+  // Ensure we have exactly 11 digits starting with 0 for Bangladesh
+  if (cleaned.length === 11 && cleaned.startsWith('0')) {
+    return cleaned;
+  }
+  
+  // If it's 11 digits starting with 1 (without leading 0), add 0
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+    return '0' + cleaned;
+  }
+  
+  return cleaned;
+};
+
+// Validate Bangladesh phone number
+const isValidBangladeshPhone = (phone) => {
+  const normalized = normalizePhoneForSearch(phone);
+  if (!normalized) return false;
+  // Check if it's exactly 11 digits starting with 01 and 3-9 as second digit
+  return /^01[3-9]\d{8}$/.test(normalized);
+};
+
 // Goal to Goal Transfer
 export const goalToGoalTransfer = async (req, res) => {
   try {
@@ -272,12 +310,34 @@ export const userToUserTransfer = async (req, res) => {
       });
     }
 
-    // Find recipient by phone number
-    const toUser = await usersCollection.findOne({ phone: toUserPhone });
+    // Normalize and find recipient by phone number
+    const normalizedPhone = normalizePhoneForSearch(toUserPhone);
+    if (!isValidBangladeshPhone(normalizedPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid phone number format. Please enter a valid 11-digit Bangladesh phone number (e.g., 01409063324)",
+      });
+    }
+
+    // Try to find recipient with multiple phone formats
+    let toUser = await usersCollection.findOne({ phone: normalizedPhone });
+    
+    // If not found with normalized format, try without leading 0
+    if (!toUser && normalizedPhone.startsWith('0')) {
+      const withoutZero = normalizedPhone.substring(1);
+      toUser = await usersCollection.findOne({ phone: withoutZero });
+    }
+    
+    // If still not found, try with +88
+    if (!toUser) {
+      const withCountryCode = '+88' + normalizedPhone;
+      toUser = await usersCollection.findOne({ phone: withCountryCode });
+    }
+
     if (!toUser) {
       return res.status(404).json({
         success: false,
-        message: "Recipient not found",
+        message: "Recipient not found. Please check the phone number.",
       });
     }
 
@@ -450,7 +510,7 @@ export const userToUserTransfer = async (req, res) => {
           toGoalName: toGoal.goalName,
           fromUserName: fromUser.name,
           toUserName: toUser.name,
-          toUserPhone: toUserPhone,
+          toUserPhone: toUser.phone,
           amount: amountNum,
           note: note || null,
           status: "completed",
@@ -469,7 +529,7 @@ export const userToUserTransfer = async (req, res) => {
         message: `Transfer of ৳${amountNum.toLocaleString()} sent to ${toUser.name} successfully`,
         data: {
           toUser: toUser.name,
-          toUserPhone: toUserPhone,
+          toUserPhone: toUser.phone,
           amount: amountNum,
           newBalance: fromGoal.currentSaved - amountNum,
         },
@@ -493,20 +553,62 @@ export const searchUserByPhone = async (req, res) => {
     const userId = req.user._id;
     const { phone } = req.query;
 
-    if (!phone || phone.length < 11) {
+    if (!phone) {
       return res.status(400).json({
         success: false,
-        message: "Valid phone number is required",
+        message: "Phone number is required",
       });
     }
 
     const usersCollection = db.collection("users");
 
-    // Find user by phone
-    const user = await usersCollection.findOne(
-      { phone: phone },
-      { projection: { password: 0, refreshToken: 0, goals: 0 } }
-    );
+    // Normalize the phone number for searching
+    const normalizedPhone = normalizePhoneForSearch(phone);
+    
+    // Try multiple formats
+    const phoneFormats = [];
+    
+    if (normalizedPhone) {
+      // Add normalized format (01XXXXXXXXX)
+      phoneFormats.push(normalizedPhone);
+      
+      // Add without leading 0 (1XXXXXXXXX)
+      if (normalizedPhone.startsWith('0')) {
+        phoneFormats.push(normalizedPhone.substring(1));
+      }
+      
+      // Add with +88
+      phoneFormats.push('+88' + normalizedPhone);
+      
+      // If it doesn't start with 0, try with 0
+      if (!normalizedPhone.startsWith('0') && normalizedPhone.length === 11) {
+        phoneFormats.push('0' + normalizedPhone);
+      }
+    }
+    
+    // Also try the original input
+    const originalCleaned = phone.replace(/\D/g, '');
+    if (!phoneFormats.includes(originalCleaned) && originalCleaned.length >= 10) {
+      phoneFormats.push(originalCleaned);
+    }
+
+    // Remove duplicates
+    const uniqueFormats = [...new Set(phoneFormats)];
+
+    // Find user with any of the phone formats
+    let user = null;
+    for (const format of uniqueFormats) {
+      if (format && format.length >= 10) {
+        const found = await usersCollection.findOne(
+          { phone: format },
+          { projection: { password: 0, refreshToken: 0, goals: 0 } }
+        );
+        if (found) {
+          user = found;
+          break;
+        }
+      }
+    }
 
     if (!user) {
       return res.status(404).json({
@@ -523,15 +625,18 @@ export const searchUserByPhone = async (req, res) => {
       });
     }
 
+    // Format the response
+    const responseData = {
+      id: user._id,
+      name: user.name || user.fullName || 'User',
+      phone: user.phone,
+      email: user.email || null,
+      profilePicture: user.profilePicture || user.avatar || null,
+    };
+
     return res.status(200).json({
       success: true,
-      data: {
-        id: user._id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-        avatar: user.avatar,
-      },
+      data: responseData,
     });
   } catch (error) {
     console.error("Search user error:", error);

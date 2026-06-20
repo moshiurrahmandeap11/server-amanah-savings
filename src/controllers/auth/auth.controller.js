@@ -1765,3 +1765,94 @@ export const getUserById = async (req, res) => {
     });
   }
 };
+
+// Add this to auth.controller.js
+
+// ==================== SEARCH USER BY PHONE ====================
+
+export const searchUserByPhone = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { phone } = req.query;
+
+    if (!phone || phone.length < 11) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid phone number is required",
+      });
+    }
+
+    // Clean phone number (remove +880 if present)
+    let cleanPhone = phone.replace(/^\+880/, '').replace(/\D/g, '');
+    
+    // If phone starts with 0, remove it
+    if (cleanPhone.startsWith('0')) {
+      cleanPhone = cleanPhone.substring(1);
+    }
+
+    // Ensure phone is exactly 11 digits (for Bangladesh)
+    if (cleanPhone.length !== 11) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number must be 11 digits (e.g., 1XXXXXXXXXX)",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+
+    // Find user by phone - search with and without +880
+    const user = await usersCollection.findOne(
+      { 
+        $or: [
+          { phone: phone },
+          { phone: `+880${cleanPhone}` },
+          { phone: `0${cleanPhone}` },
+          { phone: cleanPhone }
+        ]
+      },
+      { 
+        projection: { 
+          password: 0, 
+          pin: 0,
+          refreshToken: 0,
+          goals: 0,
+        } 
+      }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Prevent searching self
+    if (user._id.toString() === userId.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot transfer to yourself",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: user._id,
+        name: user.fullName || user.firstName,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        email: user.email,
+        profilePicture: user.profilePicture,
+        avatar: user.profilePicture,
+      },
+    });
+  } catch (error) {
+    console.error("Search user error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to search user",
+    });
+  }
+};

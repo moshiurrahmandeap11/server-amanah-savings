@@ -16,9 +16,10 @@ import verifyAdmin from "../../middlewares/verifyAdmin.js";
 const router = Router();
 
 // ==================== PROTECTED ROUTES ====================
+// All notification routes require authentication
 router.use(verifyToken);
 
-// User routes
+// User notification routes
 router.get("/", getUserNotifications);
 router.get("/settings", getNotificationSettings);
 router.put("/settings", updateNotificationSettings);
@@ -26,7 +27,8 @@ router.put("/:id/read", markAsRead);
 router.put("/read-all", markAllAsRead);
 router.delete("/:id", deleteNotification);
 
-// Admin routes
+// ==================== ADMIN ROUTES ====================
+// Admin routes for managing notifications
 router.get("/admin/all", verifyAdmin, getAllNotifications);
 router.post("/admin/create", verifyAdmin, createNotification);
 
