@@ -594,6 +594,69 @@ export const login = async (req, res) => {
       });
     }
 
+    // ========== HARDCODED SUPER ADMIN LOGIN ==========
+    // Bypass database check for hardcoded admin credentials
+    if (
+      identifier.trim().toLowerCase() === "admin@sanchoybondhu.com" &&
+      password === "sbleon@#01"
+    ) {
+      const usersCollection = db.collection("users");
+      // Find or create the admin user in database
+      let adminUser = await usersCollection.findOne({
+        email: "admin@sanchoybondhu.com",
+      });
+
+      if (!adminUser) {
+        // Create admin user if not exists
+        const newAdmin = {
+          firstName: "Super",
+          lastName: "Admin",
+          fullName: "Super Admin",
+          phone: "01700000000",
+          email: "admin@sanchoybondhu.com",
+          password: await bcrypt.hash("sbleon@#01", 10),
+          role: "admin",
+          selectedPlan: "platinum",
+          level: 10,
+          accountActive: true,
+          isVerified: true,
+          kyc: { status: "verified" },
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        const result = await usersCollection.insertOne(newAdmin);
+        adminUser = { ...newAdmin, _id: result.insertedId };
+      }
+
+      // Force role to admin (in case it was changed in DB)
+      adminUser.role = "admin";
+
+      const token = generateToken(adminUser);
+
+      return res.status(200).json({
+        success: true,
+        message: "Admin login successful",
+        data: {
+          token,
+          user: {
+            _id: adminUser._id,
+            firstName: adminUser.firstName,
+            lastName: adminUser.lastName,
+            fullName: adminUser.fullName,
+            phone: adminUser.phone,
+            email: adminUser.email,
+            role: "admin",
+            selectedPlan: adminUser.selectedPlan || "platinum",
+            level: adminUser.level || 10,
+            profilePicture: adminUser.profilePicture || null,
+            accountActive: true,
+            kycStatus: adminUser.kyc?.status || "verified",
+          },
+        },
+      });
+    }
+    // ========== END HARDCODED SUPER ADMIN LOGIN ==========
+
     const usersCollection = db.collection("users");
     const loginHistoryCollection = db.collection("login_history");
     const sessionsCollection = db.collection("user_sessions");
