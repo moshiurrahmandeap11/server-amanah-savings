@@ -2,7 +2,6 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import { createServer } from "http";
-import adminRoutes from "./src/routes/admin/admin.routes.js";
 import { initSocketIO } from "./src/socket/socket.js";
 
 dotenv.config();
@@ -31,6 +30,7 @@ import referralRoutes from "./src/routes/referral/referral.routes.js";
 import notificationRoutes from "./src/routes/notification/notification.routes.js";
 import helpRoutes from "./src/routes/help/help.routes.js";
 import contactRoutes from "./src/routes/contact/contact.routes.js";
+import adminRoutes from "./src/routes/admin/admin.routes.js";
 
 app.use(
   cors({
@@ -51,8 +51,8 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// connect to database
-connectDB();
+// connect to database FIRST before loading routes
+await connectDB();
 
 // api endpoints
 app.use("/api/users", users);
