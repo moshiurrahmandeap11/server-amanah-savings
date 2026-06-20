@@ -713,6 +713,7 @@ export const getAllSupportTicketsAdmin = async (req, res) => {
               category: 1,
               priority: 1,
               status: 1,
+              userId: 1,
               attachments: 1,
               createdAt: 1,
               updatedAt: 1,
@@ -846,7 +847,7 @@ export const adminReplyToTicket = async (req, res) => {
       },
     );
 
-    const { emitTicketReply } = await import("../socket/socket.js");
+    const { emitTicketReply } = await import("../../socket/socket.js");
     if (ticket.userId) {
       emitTicketReply(ticket.userId.toString(), ticketId, {
         message,

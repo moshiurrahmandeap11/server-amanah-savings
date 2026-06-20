@@ -1,5 +1,7 @@
 // routes/help.routes.js
 import { Router } from "express";
+import { db } from "../../database/db.js";
+import { ObjectId } from "mongodb";
 import {
   createArticle,
   getAllArticles,

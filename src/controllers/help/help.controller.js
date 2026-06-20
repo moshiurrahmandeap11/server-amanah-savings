@@ -634,8 +634,8 @@ export const replyToTicket = async (req, res) => {
     );
 
     // Emit real-time ticket reply to admins
-    const { emitNewTicket } = await import("../../socket/socket.js");
-    emitNewTicket({ ticketId, reply, userId: userId.toString(), updatedAt: new Date() });
+    const { emitTicketReply } = await import("../../socket/socket.js");
+    emitTicketReply(userId.toString(), ticketId, { message: reply.message, isAdmin: false, createdAt: new Date() });
 
     return res.status(200).json({
       success: true,
@@ -683,13 +683,20 @@ export const getAllSupportTickets = async (req, res) => {
             _id: 1,
             ticketId: 1,
             subject: 1,
+            message: 1,
             category: 1,
             priority: 1,
             status: 1,
+            userId: 1,
             createdAt: 1,
+            updatedAt: 1,
+            resolvedAt: 1,
             "user.fullName": 1,
+            "user.firstName": 1,
+            "user.lastName": 1,
             "user.phone": 1,
             "user.email": 1,
+            "user.profilePicture": 1,
           },
         },
       ])
