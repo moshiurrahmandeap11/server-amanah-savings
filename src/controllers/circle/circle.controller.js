@@ -846,7 +846,6 @@ export const leaveCircle = async (req, res) => {
 // Get public circles for discovery
 export const getPublicCircles = async (req, res) => {
   try {
-    const userId = req.user?._id;
     const { page = 1, limit = 10, purpose } = req.query;
 
     const circlesCollection = db.collection("circles");
@@ -869,13 +868,6 @@ export const getPublicCircles = async (req, res) => {
       .skip(skip)
       .limit(limitNum)
       .toArray();
-
-    // If a logged-in user is present, hide circles they already joined.
-    if (userId) {
-      circles = circles.filter(circle => 
-        !(circle.members || []).some(member => member.userId.toString() === String(userId))
-      );
-    }
 
     const formattedCircles = circles.map(circle => ({
       _id: circle._id,
