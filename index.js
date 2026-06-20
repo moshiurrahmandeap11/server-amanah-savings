@@ -34,7 +34,7 @@ import contactRoutes from "./src/routes/contact/contact.routes.js";
 
 app.use(
   cors({
-    origin: ["http://localhost:3000", "https://sanchoybondhu.com"],
+    origin: ["http://localhost:3000", "https://sanchoybondhu.com", "https://amanah-savings.vercel.app"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: [

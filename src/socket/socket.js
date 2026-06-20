@@ -8,7 +8,7 @@ let io = null;
 export const initSocketIO = (httpServer) => {
   io = new Server(httpServer, {
     cors: {
-      origin: ["http://localhost:3000", "https://sanchoybondhu.com"],
+      origin: ["http://localhost:3000", "https://sanchoybondhu.com", "https://amanah-savings.vercel.app"],
       credentials: true,
     },
   });
