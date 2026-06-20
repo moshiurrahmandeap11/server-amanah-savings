@@ -188,6 +188,183 @@ export const getUserById = async (req, res) => {
   }
 };
 
+export const updateUserPersonalInfo = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid user ID" });
+    }
+
+    const {
+      firstName,
+      lastName,
+      phone,
+      email,
+      dob,
+      gender,
+      occupation,
+      income,
+      division,
+      district,
+      upazila,
+      village,
+      postOffice,
+      postCode,
+    } = req.body;
+
+    const usersCollection = db.collection("users");
+    const userId = new ObjectId(id);
+    const existingUser = await usersCollection.findOne({ _id: userId });
+
+    if (!existingUser) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    const updateData = { updatedAt: new Date() };
+    const setIfProvided = (field, value) => {
+      if (value !== undefined) updateData[field] = value;
+    };
+
+    const normalizedFirstName =
+      firstName === undefined
+        ? undefined
+        : firstName === null
+          ? ""
+          : String(firstName).trim();
+    const normalizedLastName =
+      lastName === undefined || lastName === null
+        ? lastName
+        : String(lastName).trim();
+    const normalizedPhone =
+      phone === undefined
+        ? undefined
+        : phone === null
+          ? ""
+          : String(phone).trim();
+    const normalizedEmail =
+      email === undefined || email === null || email === ""
+        ? email
+        : String(email).trim().toLowerCase();
+
+    if (firstName !== undefined && !normalizedFirstName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "First name cannot be empty" });
+    }
+
+    if (phone !== undefined && !normalizedPhone) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Phone number cannot be empty" });
+    }
+
+    if (
+      normalizedEmail !== undefined &&
+      normalizedEmail &&
+      !/^\S+@\S+\.\S+$/.test(normalizedEmail)
+    ) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid email address" });
+    }
+
+    if (phone !== undefined || email !== undefined) {
+      const duplicateConditions = [];
+      if (normalizedPhone !== undefined)
+        duplicateConditions.push({ phone: normalizedPhone });
+      if (normalizedEmail !== undefined && normalizedEmail)
+        duplicateConditions.push({ email: normalizedEmail });
+
+      if (duplicateConditions.length > 0) {
+        const duplicateUser = await usersCollection.findOne({
+          _id: { $ne: userId },
+          $or: duplicateConditions,
+        });
+
+        if (duplicateUser) {
+          return res.status(400).json({
+            success: false,
+            message:
+              duplicateUser.phone === normalizedPhone
+                ? "Phone number already registered"
+                : "Email already registered",
+          });
+        }
+      }
+    }
+
+    setIfProvided("firstName", normalizedFirstName);
+    setIfProvided("lastName", normalizedLastName);
+    setIfProvided("phone", normalizedPhone);
+    setIfProvided("email", normalizedEmail);
+    setIfProvided("dob", dob);
+    setIfProvided("gender", gender);
+    setIfProvided("occupation", occupation);
+    setIfProvided("income", income);
+    setIfProvided("division", division);
+    setIfProvided("district", district);
+    setIfProvided("upazila", upazila);
+    setIfProvided("village", village);
+    setIfProvided("postOffice", postOffice);
+    setIfProvided("postCode", postCode);
+
+    if (firstName !== undefined || lastName !== undefined) {
+      updateData.fullName = `${updateData.firstName ?? existingUser.firstName ?? ""} ${
+        updateData.lastName ?? existingUser.lastName ?? ""
+      }`.trim();
+    }
+
+    if (
+      division !== undefined ||
+      district !== undefined ||
+      upazila !== undefined ||
+      village !== undefined ||
+      postOffice !== undefined ||
+      postCode !== undefined
+    ) {
+      updateData.address = {
+        division: division ?? existingUser.division ?? null,
+        district: district ?? existingUser.district ?? null,
+        upazila: upazila ?? existingUser.upazila ?? null,
+        village: village ?? existingUser.village ?? null,
+        postOffice: postOffice ?? existingUser.postOffice ?? null,
+        postCode: postCode ?? existingUser.postCode ?? null,
+      };
+    }
+
+    if (Object.keys(updateData).length === 1) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid personal information fields provided",
+      });
+    }
+
+    await usersCollection.updateOne({ _id: userId }, { $set: updateData });
+
+    const updatedUser = await usersCollection.findOne(
+      { _id: userId },
+      { projection: { password: 0, pin: 0 } },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "User personal information updated successfully",
+      data: { user: { id: updatedUser._id, ...updatedUser } },
+    });
+  } catch (error) {
+    console.error("Update user personal info error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update user personal information",
+    });
+  }
+};
+
 export const updateUserStatus = async (req, res) => {
   try {
     const { id } = req.params;

@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   getAllUsers,
   getUserById,
+  updateUserPersonalInfo,
   updateUserStatus,
   updateUserRole,
   updateKycStatus,
@@ -37,6 +38,7 @@ router.get("/dashboard", verifyAdmin, getAdminDashboardStats);
 // User management
 router.get("/users", verifyAdmin, getAllUsers);
 router.get("/users/:id", verifyAdmin, getUserById);
+router.patch("/users/:id/personal-info", verifyAdmin, updateUserPersonalInfo);
 router.patch("/users/:id/status", verifyAdmin, updateUserStatus);
 router.patch("/users/:id/role", verifyAdmin, updateUserRole);
 
