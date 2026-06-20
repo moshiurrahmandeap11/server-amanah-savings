@@ -146,6 +146,22 @@ export const register = async (req, res) => {
         requiredFields.push("nidFrontImage or birthCertificateImage");
       }
       
+      // Only require NID number if NID images are provided
+      if ((hasNidFront || hasNidBack) && (!nidNumber || nidNumber.trim() === '')) {
+        requiredFields.push("nidNumber");
+      }
+      
+      // Validate NID number format if provided
+      if (nidNumber && nidNumber.trim() !== '') {
+        const cleanedNid = nidNumber.replace(/\D/g, '');
+        if (cleanedNid.length !== 10 && cleanedNid.length !== 17) {
+          return res.status(400).json({
+            success: false,
+            message: "NID number must be 10 or 17 digits",
+          });
+        }
+      }
+      
       // Check Selfie
       const hasSelfie = selfieImage && selfieImage.trim() !== '';
       console.log("Selfie Check:", hasSelfie);
