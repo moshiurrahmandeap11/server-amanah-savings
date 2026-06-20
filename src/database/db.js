@@ -3,7 +3,7 @@ import { MongoClient } from "mongodb";
 dotenv.config();
 
 let client;
-let db;
+let dbInstance;
 
 const uri = process.env.MONGO_URI;
 
@@ -12,14 +12,24 @@ const connectDB = async() => {
         if(!client) {
             client = new MongoClient(uri);
             await client.connect();
-            db = client.db("amanah-savings")
+            dbInstance = client.db("amanah-savings")
             console.log("MongoDB connected to amanah savings");
         }
-        return db;
+        return dbInstance;
     } catch (error) {
         console.log("MongoDB connection failed : ", error.message);
         process.exit(1)
     }
 }
 
-export {connectDB, db};
+// Export a getter that always returns the connected db
+export const db = new Proxy({}, {
+  get(target, prop) {
+    if (!dbInstance) {
+      throw new Error("Database not connected yet. Call connectDB() first.");
+    }
+    return dbInstance[prop];
+  }
+});
+
+export {connectDB, dbInstance};
