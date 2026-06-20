@@ -25,6 +25,16 @@ import {
   updateCmsContent,
   getAllTransactions,
 } from "../../controllers/admin/admin.controller.js";
+import {
+  getCircleJoinRequestsAdmin,
+  getAllCirclesAdmin,
+  deleteCircleAdmin,
+  reviewCircleJoinRequestAdmin,
+} from "../../controllers/circle/circle.controller.js";
+import {
+  getAllGoalsAdmin,
+  deleteGoalAdmin,
+} from "../../controllers/goal/goal.controller.js";
 import verifyAdmin from "../../middlewares/verifyAdmin.js";
 
 const router = Router();
@@ -62,6 +72,14 @@ router.get("/analytics", verifyAdmin, getAnalyticsData);
 // Savings & Revenue
 router.get("/savings", verifyAdmin, getSavingsData);
 router.get("/revenue", verifyAdmin, getRevenueData);
+
+// Circle join requests
+router.get("/goals", verifyAdmin, getAllGoalsAdmin);
+router.delete("/goals/:id", verifyAdmin, deleteGoalAdmin);
+router.get("/circles", verifyAdmin, getAllCirclesAdmin);
+router.delete("/circles/:id", verifyAdmin, deleteCircleAdmin);
+router.get("/circle-join-requests", verifyAdmin, getCircleJoinRequestsAdmin);
+router.patch("/circle-join-requests/:requestId", verifyAdmin, reviewCircleJoinRequestAdmin);
 
 // Security & Fraud
 router.get("/security/events", verifyAdmin, getSecurityEvents);

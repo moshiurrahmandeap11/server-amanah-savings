@@ -189,10 +189,169 @@ export const getUserCircles = async (req, res) => {
   }
 };
 
+// Admin: get every circle with owner details
+export const getAllCirclesAdmin = async (req, res) => {
+  try {
+    const {
+      status,
+      circleType,
+      page = 1,
+      limit = 50,
+      search = "",
+    } = req.query;
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    const circlesCollection = db.collection("circles");
+    const match = {};
+
+    if (status && status !== "all") {
+      match.status = status;
+    }
+
+    if (circleType && circleType !== "all") {
+      match.circleType = circleType;
+    }
+
+    if (search) {
+      match.$or = [
+        { circleName: { $regex: search, $options: "i" } },
+        { purpose: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const [circles, total] = await Promise.all([
+      circlesCollection
+        .aggregate([
+          { $match: match },
+          { $sort: { createdAt: -1 } },
+          { $skip: skip },
+          { $limit: limitNumber },
+          {
+            $lookup: {
+              from: "users",
+              localField: "createdBy",
+              foreignField: "_id",
+              as: "owner",
+            },
+          },
+          { $unwind: { path: "$owner", preserveNullAndEmptyArrays: true } },
+          {
+            $project: {
+              circleName: 1,
+              purpose: 1,
+              targetAmount: 1,
+              maxMembers: 1,
+              minDeposit: 1,
+              description: 1,
+              circleType: 1,
+              createdBy: 1,
+              currentMembers: 1,
+              members: 1,
+              totalPool: 1,
+              status: 1,
+              createdAt: 1,
+              updatedAt: 1,
+              owner: {
+                _id: "$owner._id",
+                firstName: "$owner.firstName",
+                lastName: "$owner.lastName",
+                fullName: "$owner.fullName",
+                phone: "$owner.phone",
+                email: "$owner.email",
+              },
+            },
+          },
+        ])
+        .toArray(),
+      circlesCollection.countDocuments(match),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        circles,
+        pagination: {
+          currentPage: pageNumber,
+          totalPages: Math.ceil(total / limitNumber),
+          totalItems: total,
+          itemsPerPage: limitNumber,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get all circles admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch admin circles",
+    });
+  }
+};
+
+// Admin: delete any circle
+export const deleteCircleAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid circle ID",
+      });
+    }
+
+    const circlesCollection = db.collection("circles");
+    const usersCollection = db.collection("users");
+    const joinRequestsCollection = db.collection("circleJoinRequests");
+    const circleObjectId = new ObjectId(id);
+
+    const circle = await circlesCollection.findOne({ _id: circleObjectId });
+    if (!circle) {
+      return res.status(404).json({
+        success: false,
+        message: "Circle not found",
+      });
+    }
+
+    await Promise.all([
+      circlesCollection.deleteOne({ _id: circleObjectId }),
+      usersCollection.updateMany(
+        {},
+        { $pull: { circles: { circleId: circleObjectId } } }
+      ),
+      joinRequestsCollection.updateMany(
+        { circleId: circleObjectId, status: "pending" },
+        {
+          $set: {
+            status: "rejected",
+            rejectionReason: "Circle deleted by admin",
+            reviewedBy: new ObjectId(req.user._id),
+            reviewedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        }
+      ),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Circle deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete circle admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to delete circle",
+    });
+  }
+};
+
 // Get single circle by ID
 export const getCircleById = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user?._id;
     const { id } = req.params;
 
     if (!ObjectId.isValid(id)) {
@@ -205,7 +364,6 @@ export const getCircleById = async (req, res) => {
     const circlesCollection = db.collection("circles");
     const circle = await circlesCollection.findOne({
       _id: new ObjectId(id),
-      "members.userId": new ObjectId(userId),
     });
 
     if (!circle) {
@@ -213,6 +371,26 @@ export const getCircleById = async (req, res) => {
         success: false,
         message: "Circle not found",
       });
+    }
+
+    if (circle.circleType === "private") {
+      if (!userId) {
+        return res.status(403).json({
+          success: false,
+          message: "Private circle requires an invite or membership",
+        });
+      }
+
+      const isMember = (circle.members || []).some(
+        member => member.userId.toString() === String(userId)
+      );
+
+      if (!isMember) {
+        return res.status(403).json({
+          success: false,
+          message: "Private circle requires an invite or membership",
+        });
+      }
     }
 
     const formattedCircle = {
@@ -246,6 +424,7 @@ export const getCircleById = async (req, res) => {
 export const joinCircle = async (req, res) => {
   try {
     const userId = req.user._id;
+    const userObjectId = new ObjectId(userId);
     const { id } = req.params;
 
     if (!ObjectId.isValid(id)) {
@@ -257,6 +436,7 @@ export const joinCircle = async (req, res) => {
 
     const circlesCollection = db.collection("circles");
     const usersCollection = db.collection("users");
+    const joinRequestsCollection = db.collection("circleJoinRequests");
 
     const circle = await circlesCollection.findOne({
       _id: new ObjectId(id),
@@ -270,9 +450,16 @@ export const joinCircle = async (req, res) => {
       });
     }
 
+    if (circle.circleType === "private") {
+      return res.status(403).json({
+        success: false,
+        message: "Private circles can only be joined with an invite link",
+      });
+    }
+
     // Check if user is already a member
-    const isMember = circle.members.some(
-      member => member.userId.toString() === userId
+    const isMember = (circle.members || []).some(
+      member => member.userId.toString() === String(userId)
     );
 
     if (isMember) {
@@ -290,47 +477,291 @@ export const joinCircle = async (req, res) => {
       });
     }
 
-    // Add user to circle
-    const result = await circlesCollection.updateOne(
-      { _id: new ObjectId(id) },
-      {
-        $push: {
-          members: {
-            userId: new ObjectId(userId),
-            joinedAt: new Date(),
-            role: "member",
-            totalDeposited: 0,
-          },
+    const existingRequest = await joinRequestsCollection.findOne({
+      circleId: new ObjectId(id),
+      userId: userObjectId,
+      status: "pending",
+    });
+
+    if (existingRequest) {
+      return res.status(200).json({
+        success: true,
+        message: "Your join request is already pending admin approval",
+        data: {
+          requestId: existingRequest._id,
+          status: existingRequest.status,
         },
-        $inc: { currentMembers: 1 },
-        $set: { updatedAt: new Date() },
-      }
+      });
+    }
+
+    const user = await usersCollection.findOne(
+      { _id: userObjectId },
+      { projection: { password: 0, pin: 0 } }
     );
 
-    // Add circle to user's circles array
-    await usersCollection.updateOne(
-      { _id: new ObjectId(userId) },
-      {
-        $push: {
-          circles: {
-            circleId: new ObjectId(id),
-            circleName: circle.circleName,
-            role: "member",
-            joinedAt: new Date(),
-          },
-        },
-      }
-    );
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
 
-    return res.status(200).json({
+    const now = new Date();
+    const request = {
+      circleId: new ObjectId(id),
+      circleName: circle.circleName,
+      circleType: circle.circleType,
+      userId: userObjectId,
+      userName: user.fullName || `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.phone || "User",
+      userPhone: user.phone || null,
+      userEmail: user.email || null,
+      status: "pending",
+      requestedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const result = await joinRequestsCollection.insertOne(request);
+
+    return res.status(202).json({
       success: true,
-      message: "Successfully joined the circle",
+      message: "Join request sent to admin for approval",
+      data: {
+        requestId: result.insertedId,
+        status: request.status,
+      },
     });
   } catch (error) {
     console.error("Join circle error:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to join circle",
+    });
+  }
+};
+
+// Admin: list circle join requests
+export const getCircleJoinRequestsAdmin = async (req, res) => {
+  try {
+    const {
+      status = "pending",
+      page = 1,
+      limit = 20,
+      search = "",
+    } = req.query;
+
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const skip = (pageNumber - 1) * limitNumber;
+    const joinRequestsCollection = db.collection("circleJoinRequests");
+
+    const query = {};
+    if (status && status !== "all") {
+      query.status = status;
+    }
+
+    if (search) {
+      query.$or = [
+        { circleName: { $regex: search, $options: "i" } },
+        { userName: { $regex: search, $options: "i" } },
+        { userPhone: { $regex: search, $options: "i" } },
+        { userEmail: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const [requests, total] = await Promise.all([
+      joinRequestsCollection
+        .find(query)
+        .sort({ requestedAt: -1 })
+        .skip(skip)
+        .limit(limitNumber)
+        .toArray(),
+      joinRequestsCollection.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        requests,
+        pagination: {
+          page: pageNumber,
+          limit: limitNumber,
+          total,
+          totalPages: Math.ceil(total / limitNumber),
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get circle join requests admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch circle join requests",
+    });
+  }
+};
+
+// Admin: approve or reject circle join request
+export const reviewCircleJoinRequestAdmin = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { rejectionReason } = req.body;
+    const action = req.body.action || req.body.status;
+    const normalizedAction = action === "approved"
+      ? "approve"
+      : action === "rejected"
+        ? "reject"
+        : action;
+
+    if (!ObjectId.isValid(requestId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request ID",
+      });
+    }
+
+    if (!["approve", "reject"].includes(normalizedAction)) {
+      return res.status(400).json({
+        success: false,
+        message: "Action must be approve or reject",
+      });
+    }
+
+    const joinRequestsCollection = db.collection("circleJoinRequests");
+    const circlesCollection = db.collection("circles");
+    const usersCollection = db.collection("users");
+    const now = new Date();
+
+    const joinRequest = await joinRequestsCollection.findOne({
+      _id: new ObjectId(requestId),
+    });
+
+    if (!joinRequest) {
+      return res.status(404).json({
+        success: false,
+        message: "Join request not found",
+      });
+    }
+
+    if (joinRequest.status !== "pending") {
+      return res.status(400).json({
+        success: false,
+        message: `Join request is already ${joinRequest.status}`,
+      });
+    }
+
+    if (normalizedAction === "reject") {
+      await joinRequestsCollection.updateOne(
+        { _id: joinRequest._id },
+        {
+          $set: {
+            status: "rejected",
+            rejectionReason: rejectionReason || null,
+            reviewedBy: new ObjectId(req.user._id),
+            reviewedAt: now,
+            updatedAt: now,
+          },
+        }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Join request rejected",
+      });
+    }
+
+    const circle = await circlesCollection.findOne({
+      _id: joinRequest.circleId,
+      status: "active",
+    });
+
+    if (!circle) {
+      return res.status(404).json({
+        success: false,
+        message: "Circle not found or inactive",
+      });
+    }
+
+    const isMember = (circle.members || []).some(
+      member => member.userId.toString() === joinRequest.userId.toString()
+    );
+
+    if (isMember) {
+      await joinRequestsCollection.updateOne(
+        { _id: joinRequest._id },
+        {
+          $set: {
+            status: "approved",
+            reviewedBy: new ObjectId(req.user._id),
+            reviewedAt: now,
+            updatedAt: now,
+          },
+        }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "User is already a member of this circle",
+      });
+    }
+
+    if (circle.currentMembers >= circle.maxMembers) {
+      return res.status(400).json({
+        success: false,
+        message: "Circle is full",
+      });
+    }
+
+    await circlesCollection.updateOne(
+      { _id: circle._id },
+      {
+        $push: {
+          members: {
+            userId: joinRequest.userId,
+            joinedAt: now,
+            role: "member",
+            totalDeposited: 0,
+          },
+        },
+        $inc: { currentMembers: 1 },
+        $set: { updatedAt: now },
+      }
+    );
+
+    await usersCollection.updateOne(
+      { _id: joinRequest.userId },
+      {
+        $push: {
+          circles: {
+            circleId: circle._id,
+            circleName: circle.circleName,
+            role: "member",
+            joinedAt: now,
+          },
+        },
+      }
+    );
+
+    await joinRequestsCollection.updateOne(
+      { _id: joinRequest._id },
+      {
+        $set: {
+          status: "approved",
+          reviewedBy: new ObjectId(req.user._id),
+          reviewedAt: now,
+          updatedAt: now,
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Join request approved and user added to circle",
+    });
+  } catch (error) {
+    console.error("Review circle join request admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to review circle join request",
     });
   }
 };
@@ -415,13 +846,13 @@ export const leaveCircle = async (req, res) => {
 // Get public circles for discovery
 export const getPublicCircles = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user?._id;
     const { page = 1, limit = 10, purpose } = req.query;
 
     const circlesCollection = db.collection("circles");
     
     const query = { 
-      circleType: "public",
+      circleType: { $ne: "private" },
       status: "active",
     };
     
@@ -439,10 +870,12 @@ export const getPublicCircles = async (req, res) => {
       .limit(limitNum)
       .toArray();
 
-    // Filter out circles where user is already a member
-    circles = circles.filter(circle => 
-      !circle.members.some(member => member.userId.toString() === userId)
-    );
+    // If a logged-in user is present, hide circles they already joined.
+    if (userId) {
+      circles = circles.filter(circle => 
+        !(circle.members || []).some(member => member.userId.toString() === String(userId))
+      );
+    }
 
     const formattedCircles = circles.map(circle => ({
       _id: circle._id,

@@ -13,17 +13,17 @@ import verifyToken from "../../middlewares/verifyToken.js";
 
 const router = Router();
 
-// ==================== PROTECTED ROUTES ====================
-// All goal routes require authentication
-router.use(verifyToken);
-
-// Goal CRUD operations
-router.post("/", createGoal);
+// ==================== PUBLIC ROUTES ====================
+// Goals are publicly readable and do not require authentication.
 router.get("/", getUserGoals);
-router.get("/statistics", getGoalStatistics);
+
+// ==================== PROTECTED ROUTES ====================
+// Goal mutations and private user statistics require authentication.
+router.post("/", verifyToken, createGoal);
+router.get("/statistics", verifyToken, getGoalStatistics);
 router.get("/:id", getGoalById);
-router.put("/:id", updateGoal);
-router.delete("/:id", deleteGoal);
-router.patch("/:id/toggle-status", toggleGoalStatus);
+router.put("/:id", verifyToken, updateGoal);
+router.delete("/:id", verifyToken, deleteGoal);
+router.patch("/:id/toggle-status", verifyToken, toggleGoalStatus);
 
 export default router;

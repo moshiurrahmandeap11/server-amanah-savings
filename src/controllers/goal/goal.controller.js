@@ -148,15 +148,14 @@ export const createGoal = async (req, res) => {
   }
 };
 
-// Get all goals for a user
+// Get all public goals
 export const getUserGoals = async (req, res) => {
   try {
-    const userId = req.user._id;
     const { status, page = 1, limit = 10 } = req.query;
 
     const goalsCollection = db.collection("goals");
     
-    const query = { userId: new ObjectId(userId) };
+    const query = {};
     if (status && status !== "all") {
       query.status = status;
     }
@@ -194,10 +193,9 @@ export const getUserGoals = async (req, res) => {
   }
 };
 
-// Get single goal by ID
+// Get single public goal by ID
 export const getGoalById = async (req, res) => {
   try {
-    const userId = req.user._id;
     const { id } = req.params;
 
     if (!ObjectId.isValid(id)) {
@@ -210,7 +208,6 @@ export const getGoalById = async (req, res) => {
     const goalsCollection = db.collection("goals");
     const goal = await goalsCollection.findOne({
       _id: new ObjectId(id),
-      userId: new ObjectId(userId),
     });
 
     if (!goal) {
@@ -229,6 +226,153 @@ export const getGoalById = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch goal",
+    });
+  }
+};
+
+// Admin: get all goals with owner details
+export const getAllGoalsAdmin = async (req, res) => {
+  try {
+    const { status, page = 1, limit = 50, search = "" } = req.query;
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    const goalsCollection = db.collection("goals");
+    const match = {};
+
+    if (status && status !== "all") {
+      match.status = status;
+    }
+
+    if (search) {
+      match.$or = [
+        { goalName: { $regex: search, $options: "i" } },
+        { goalType: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const [goals, total] = await Promise.all([
+      goalsCollection
+        .aggregate([
+          { $match: match },
+          { $sort: { createdAt: -1 } },
+          { $skip: skip },
+          { $limit: limitNumber },
+          {
+            $lookup: {
+              from: "users",
+              localField: "userId",
+              foreignField: "_id",
+              as: "owner",
+            },
+          },
+          { $unwind: { path: "$owner", preserveNullAndEmptyArrays: true } },
+          {
+            $project: {
+              goalName: 1,
+              goalType: 1,
+              targetAmount: 1,
+              monthlyDeposit: 1,
+              currentSaved: 1,
+              progress: 1,
+              status: 1,
+              targetDate: 1,
+              estimatedCompletionDate: 1,
+              islamicMode: 1,
+              description: 1,
+              createdAt: 1,
+              updatedAt: 1,
+              userId: 1,
+              owner: {
+                _id: "$owner._id",
+                firstName: "$owner.firstName",
+                lastName: "$owner.lastName",
+                fullName: "$owner.fullName",
+                phone: "$owner.phone",
+                email: "$owner.email",
+              },
+            },
+          },
+        ])
+        .toArray(),
+      goalsCollection.countDocuments(match),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        goals,
+        pagination: {
+          currentPage: pageNumber,
+          totalPages: Math.ceil(total / limitNumber),
+          totalItems: total,
+          itemsPerPage: limitNumber,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get all goals admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch admin goals",
+    });
+  }
+};
+
+// Admin: delete any goal
+export const deleteGoalAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid goal ID",
+      });
+    }
+
+    const goalsCollection = db.collection("goals");
+    const usersCollection = db.collection("users");
+    const depositsCollection = db.collection("deposits");
+    const goalObjectId = new ObjectId(id);
+
+    const goal = await goalsCollection.findOne({ _id: goalObjectId });
+    if (!goal) {
+      return res.status(404).json({
+        success: false,
+        message: "Goal not found",
+      });
+    }
+
+    await Promise.all([
+      goalsCollection.deleteOne({ _id: goalObjectId }),
+      usersCollection.updateMany(
+        {},
+        { $pull: { goals: { goalId: goalObjectId } } }
+      ),
+      depositsCollection.updateMany(
+        { goalId: goalObjectId },
+        {
+          $set: {
+            goalDeleted: true,
+            deletedByAdmin: new ObjectId(req.user._id),
+            goalDeletedAt: new Date(),
+          },
+        }
+      ),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Goal deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete goal admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to delete goal",
     });
   }
 };
