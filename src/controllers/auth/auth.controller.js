@@ -463,6 +463,17 @@ export const uploadKycDocuments = async (req, res) => {
       kycConsent,
     } = req.body;
 
+    console.log("[uploadKycDocuments] Received payload:", {
+      userId,
+      nidNumber,
+      nidFrontImage: nidFrontImage ? "PRESENT (length: " + nidFrontImage.length + ")" : "NULL",
+      nidBackImage: nidBackImage ? "PRESENT (length: " + nidBackImage.length + ")" : "NULL",
+      selfieImage: selfieImage ? "PRESENT (length: " + selfieImage.length + ")" : "NULL",
+      birthCertificateImage: birthCertificateImage ? "PRESENT" : "NULL",
+      passportImage: passportImage ? "PRESENT" : "NULL",
+      kycConsent,
+    });
+
     const usersCollection = db.collection("users");
 
     const updateData = {
@@ -480,10 +491,17 @@ export const uploadKycDocuments = async (req, res) => {
       },
     };
 
+    console.log("[uploadKycDocuments] Update data:", JSON.stringify(updateData, null, 2));
+
     const result = await usersCollection.updateOne(
       { _id: new ObjectId(userId) },
       updateData,
     );
+
+    console.log("[uploadKycDocuments] MongoDB result:", {
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount,
+    });
 
     if (result.matchedCount === 0) {
       return res.status(404).json({
