@@ -74,6 +74,10 @@ app.use("/api/contact", contactRoutes);
 
 app.use("/api/admin", adminRoutes);
 
+app.get("/", (req, res) => {
+  res.send("Sanchoy Server is running...")
+})
+
 httpServer.listen(port, () => {
   console.log(`amanah savings running on port http://localhost:${port}`);
 });
