@@ -433,7 +433,22 @@ export const register = async (req, res) => {
           phone: user.phone,
           email: user.email,
           selectedPlan: user.selectedPlan,
-          kycStatus: user.kyc.status,
+          kyc: {
+          nidNumber: user.kyc?.nidNumber || null,
+          nidFrontImage: user.kyc?.nidFrontImage || null,
+          nidBackImage: user.kyc?.nidBackImage || null,
+          birthCertificateImage: user.kyc?.birthCertificateImage || null,
+          selfieImage: user.kyc?.selfieImage || null,
+          passportImage: user.kyc?.passportImage || null,
+          kycConsent: user.kyc?.kycConsent || false,
+          status: user.kyc?.status || "pending",
+          submittedAt: user.kyc?.submittedAt || null,
+          verifiedAt: user.kyc?.verifiedAt || null,
+          rejectionReason: user.kyc?.rejectionReason || null,
+          islamicMode: user.kyc?.islamicMode || false,
+          skipped: user.kyc?.skipped || false,
+        },
+        kycCompleted: user.kycCompleted || false,
           accountActive: user.accountActive,
           referralCode: user.referralCode,
           createdAt: user.createdAt,
@@ -476,7 +491,7 @@ export const uploadKycDocuments = async (req, res) => {
 
     const usersCollection = db.collection("users");
     
-    // First, check if user exists
+    // Check if user already has a pending KYC submission (prevent duplicate)
     const existingUser = await usersCollection.findOne({ _id: new ObjectId(userId) });
     console.log("[uploadKycDocuments] Existing user found:", existingUser ? "YES" : "NO");
     if (existingUser) {
@@ -485,7 +500,24 @@ export const uploadKycDocuments = async (req, res) => {
         nidFrontImage: existingUser.kyc?.nidFrontImage ? "PRESENT" : "NULL",
         nidBackImage: existingUser.kyc?.nidBackImage ? "PRESENT" : "NULL",
         selfieImage: existingUser.kyc?.selfieImage ? "PRESENT" : "NULL",
+        kycStatus: existingUser.kyc?.status,
+        kycSubmittedAt: existingUser.kyc?.submittedAt,
       });
+      
+      // If KYC is already pending and was submitted within last 5 minutes, reject duplicate
+      if (existingUser.kyc?.status === "pending" && existingUser.kyc?.submittedAt) {
+        const lastSubmitted = new Date(existingUser.kyc.submittedAt);
+        const now = new Date();
+        const minutesSinceLastSubmit = (now - lastSubmitted) / (1000 * 60);
+        
+        if (minutesSinceLastSubmit < 5) {
+          console.log("[uploadKycDocuments] Duplicate submission blocked. Last submitted:", minutesSinceLastSubmit, "minutes ago");
+          return res.status(429).json({
+            success: false,
+            message: "Please wait 5 minutes before submitting KYC documents again.",
+          });
+        }
+      }
     }
 
     const updateData = {
@@ -499,6 +531,7 @@ export const uploadKycDocuments = async (req, res) => {
         "kyc.kycConsent": kycConsent || false,
         "kyc.status": "pending",
         "kyc.submittedAt": new Date(),
+        kycCompleted: false,
         updatedAt: new Date(),
       },
     };
@@ -697,7 +730,22 @@ export const login = async (req, res) => {
           phone: user.phone,
           email: user.email,
           selectedPlan: user.selectedPlan,
-          kycStatus: user.kyc.status,
+          kyc: {
+          nidNumber: user.kyc?.nidNumber || null,
+          nidFrontImage: user.kyc?.nidFrontImage || null,
+          nidBackImage: user.kyc?.nidBackImage || null,
+          birthCertificateImage: user.kyc?.birthCertificateImage || null,
+          selfieImage: user.kyc?.selfieImage || null,
+          passportImage: user.kyc?.passportImage || null,
+          kycConsent: user.kyc?.kycConsent || false,
+          status: user.kyc?.status || "pending",
+          submittedAt: user.kyc?.submittedAt || null,
+          verifiedAt: user.kyc?.verifiedAt || null,
+          rejectionReason: user.kyc?.rejectionReason || null,
+          islamicMode: user.kyc?.islamicMode || false,
+          skipped: user.kyc?.skipped || false,
+        },
+        kycCompleted: user.kycCompleted || false,
           accountActive: user.accountActive,
           level: user.level,
           streak: user.streak,
@@ -798,7 +846,22 @@ export const getCurrentUser = async (req, res) => {
         phone: user.phone,
         email: user.email,
         selectedPlan: user.selectedPlan,
-        kycStatus: user.kyc.status,
+        kyc: {
+          nidNumber: user.kyc?.nidNumber || null,
+          nidFrontImage: user.kyc?.nidFrontImage || null,
+          nidBackImage: user.kyc?.nidBackImage || null,
+          birthCertificateImage: user.kyc?.birthCertificateImage || null,
+          selfieImage: user.kyc?.selfieImage || null,
+          passportImage: user.kyc?.passportImage || null,
+          kycConsent: user.kyc?.kycConsent || false,
+          status: user.kyc?.status || "pending",
+          submittedAt: user.kyc?.submittedAt || null,
+          verifiedAt: user.kyc?.verifiedAt || null,
+          rejectionReason: user.kyc?.rejectionReason || null,
+          islamicMode: user.kyc?.islamicMode || false,
+          skipped: user.kyc?.skipped || false,
+        },
+        kycCompleted: user.kycCompleted || false,
         accountActive: user.accountActive,
         level: user.level,
         streak: user.streak,

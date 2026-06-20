@@ -219,23 +219,46 @@ export const uploadKycFiles = async (req, res) => {
         resourceType = "video";
       }
 
+      // Validate Cloudinary URL
+      const cloudinaryUrl = file.path;
+      const isValidUrl = cloudinaryUrl && (
+        cloudinaryUrl.startsWith('https://res.cloudinary.com/') ||
+        cloudinaryUrl.startsWith('http://res.cloudinary.com/')
+      );
+      
+      if (!isValidUrl) {
+        console.error("[Upload KYC] Invalid Cloudinary URL:", cloudinaryUrl);
+      }
+
       const fileData = {
-        url: file.path,
+        url: cloudinaryUrl,
         publicId: file.filename,
         format: file.mimetype.split("/")[1],
         size: file.size,
         originalName: file.originalname,
         resourceType: resourceType,
+        isValidUrl: isValidUrl,
       };
       
       console.log("[Upload KYC] File processed:", {
         originalName: file.originalname,
         url: file.path ? file.path.substring(0, 80) + "..." : "MISSING",
         publicId: file.filename ? file.filename.substring(0, 40) + "..." : "MISSING",
+        isValidUrl,
       });
       
       return fileData;
     });
+    
+    // Check if any URL is invalid
+    const invalidUrls = filesData.filter(f => !f.isValidUrl);
+    if (invalidUrls.length > 0) {
+      console.error("[Upload KYC] Some files have invalid URLs:", invalidUrls.length);
+      return res.status(500).json({
+        success: false,
+        message: "Some files failed to upload to Cloudinary. Please try again.",
+      });
+    }
 
     console.log("[Upload KYC] SUCCESS:", { 
       filesCount: filesData.length, 

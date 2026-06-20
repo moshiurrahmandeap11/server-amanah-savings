@@ -312,26 +312,42 @@ export const getKycApplications = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const limitNum = parseInt(limit);
     
-    // Filter: users who have submitted KYC (not skipped) OR have KYC documents
-    const filter = {
-      $or: [
-        { "kyc.status": { $in: ["pending", "approved", "rejected"] } },
-        { "kyc.nidFrontImage": { $exists: true, $ne: null, $ne: "" } },
-        { "kyc.nidBackImage": { $exists: true, $ne: null, $ne: "" } },
-        { "kyc.selfieImage": { $exists: true, $ne: null, $ne: "" } },
-        { "kyc.birthCertificateImage": { $exists: true, $ne: null, $ne: "" } },
-        { "kyc.passportImage": { $exists: true, $ne: null, $ne: "" } },
-      ],
-    };
+    // Build filter conditions
+    const conditions = [];
     
-    // Also exclude users who skipped KYC and have no documents
-    filter.$nor = [
-      { "kyc.status": "skipped", "kyc.nidFrontImage": null, "kyc.selfieImage": null, "kyc.birthCertificateImage": null }
+    // Condition 1: User has KYC status (pending/approved/rejected) OR has KYC documents uploaded
+    const kycConditions = [
+      { "kyc.status": { $in: ["pending", "approved", "rejected"] } },
+      { "kyc.nidFrontImage": { $exists: true, $ne: null, $ne: "" } },
+      { "kyc.nidBackImage": { $exists: true, $ne: null, $ne: "" } },
+      { "kyc.selfieImage": { $exists: true, $ne: null, $ne: "" } },
+      { "kyc.birthCertificateImage": { $exists: true, $ne: null, $ne: "" } },
+      { "kyc.passportImage": { $exists: true, $ne: null, $ne: "" } },
     ];
+    conditions.push({ $or: kycConditions });
     
-    if (status) filter["kyc.status"] = status;
+    // Condition 2: Exclude users who skipped KYC and have NO documents at all
+    conditions.push({
+      $not: {
+        $and: [
+          { "kyc.status": "skipped" },
+          { "kyc.nidFrontImage": { $in: [null, ""], $exists: true } },
+          { "kyc.nidBackImage": { $in: [null, ""], $exists: true } },
+          { "kyc.selfieImage": { $in: [null, ""], $exists: true } },
+          { "kyc.birthCertificateImage": { $in: [null, ""], $exists: true } },
+          { "kyc.passportImage": { $in: [null, ""], $exists: true } },
+        ]
+      }
+    });
+    
+    // Condition 3: Status filter (if provided)
+    if (status) {
+      conditions.push({ "kyc.status": status });
+    }
+    
+    // Condition 4: Search filter (if provided) - combines with $and so KYC conditions are preserved
     if (search) {
-      filter.$or = [
+      const searchConditions = [
         { fullName: { $regex: search, $options: "i" } },
         { firstName: { $regex: search, $options: "i" } },
         { lastName: { $regex: search, $options: "i" } },
@@ -339,7 +355,13 @@ export const getKycApplications = async (req, res) => {
         { email: { $regex: search, $options: "i" } },
         { "kyc.nidNumber": { $regex: search, $options: "i" } },
       ];
+      conditions.push({ $or: searchConditions });
     }
+    
+    // Combine all conditions with $and
+    const filter = conditions.length === 1 ? conditions[0] : { $and: conditions };
+    
+    console.log("[KYC API] Filter:", JSON.stringify(filter, null, 2));
     const [users, total] = await Promise.all([
       usersCollection
         .find(filter, { projection: { password: 0, pin: 0 } })
@@ -352,12 +374,13 @@ export const getKycApplications = async (req, res) => {
     
     // Debug log
     console.log(`[KYC API] Found ${users.length} users, total: ${total}`);
+    console.log(`[KYC API] Filter used: ${JSON.stringify(filter).substring(0, 500)}`);
     if (users.length > 0) {
       const firstUser = users[0];
       console.log(`[KYC API] First user KYC data:`, {
         id: firstUser._id,
         nidNumber: firstUser.kyc?.nidNumber,
-        nidFrontImage: firstUser.kyc?.nidFrontImage ? "PRESENT" : "NULL",
+        nidFrontImage: firstUser.kyc?.nidFrontImage ? "PRESENT (" + firstUser.kyc.nidFrontImage.substring(0, 50) + "...)" : "NULL",
         nidBackImage: firstUser.kyc?.nidBackImage ? "PRESENT" : "NULL",
         selfieImage: firstUser.kyc?.selfieImage ? "PRESENT" : "NULL",
         birthCertificateImage: firstUser.kyc?.birthCertificateImage ? "PRESENT" : "NULL",
