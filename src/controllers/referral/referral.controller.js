@@ -11,6 +11,212 @@ const generateReferralCode = (name) => {
   return `${prefix}${randomNum}`;
 };
 
+export const applyReferralBonusForApprovedDeposit = async ({ userId, depositAmount }) => {
+  const BONUS_AMOUNT = 500;
+  const MIN_DEPOSIT_FOR_BONUS = 500;
+  const depositAmountNumber = Number(depositAmount) || 0;
+
+  if (!userId || depositAmountNumber < MIN_DEPOSIT_FOR_BONUS) {
+    return {
+      applied: false,
+      reason: "minimum_not_met",
+      message: `Minimum deposit of Tk ${MIN_DEPOSIT_FOR_BONUS} required for referral bonus`,
+    };
+  }
+
+  const referredUserObjectId = new ObjectId(userId);
+  const usersCollection = db.collection("users");
+  const referralsCollection = db.collection("referrals");
+  const depositsCollection = db.collection("deposits");
+  const goalsCollection = db.collection("goals");
+  const now = new Date();
+
+  const lockedReferralResult = await referralsCollection.findOneAndUpdate(
+    {
+      referredUserId: referredUserObjectId,
+      status: "pending",
+      bonusPaid: { $ne: true },
+    },
+    {
+      $set: {
+        status: "processing",
+        updatedAt: now,
+      },
+    },
+    { returnDocument: "after" }
+  );
+
+  const referral = lockedReferralResult?.value || lockedReferralResult;
+
+  if (!referral) {
+    return {
+      applied: false,
+      reason: "no_pending_referral",
+      message: "No pending referral bonus found for this user",
+    };
+  }
+
+  try {
+    const [referrer, referredUser] = await Promise.all([
+      usersCollection.findOne({ _id: referral.referrerId }),
+      usersCollection.findOne({ _id: referral.referredUserId }),
+    ]);
+
+    if (!referrer || !referredUser) {
+      throw new Error("Referral users not found");
+    }
+
+    const getOrCreateBonusGoal = async (user) => {
+      let bonusGoal = await goalsCollection.findOne({
+        userId: user._id,
+        goalName: "Referral Bonus",
+        status: "active",
+      });
+
+      if (!bonusGoal) {
+        const newGoal = {
+          userId: user._id,
+          goalType: "bonus",
+          goalName: "Referral Bonus",
+          targetAmount: 100000,
+          monthlyDeposit: 0,
+          targetDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
+          description: "Auto-created for referral bonuses",
+          islamicMode: false,
+          currentSaved: 0,
+          progress: 0,
+          status: "active",
+          durationInMonths: 12,
+          estimatedCompletionDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        const result = await goalsCollection.insertOne(newGoal);
+        bonusGoal = { ...newGoal, _id: result.insertedId };
+      }
+
+      return bonusGoal;
+    };
+
+    const [referrerBonusGoal, referredBonusGoal] = await Promise.all([
+      getOrCreateBonusGoal(referrer),
+      getOrCreateBonusGoal(referredUser),
+    ]);
+
+    const updateBonusGoal = async (goal) => {
+      const newSaved = (Number(goal.currentSaved) || 0) + BONUS_AMOUNT;
+      const progress = Math.min(Math.round((newSaved / goal.targetAmount) * 100), 100);
+
+      await goalsCollection.updateOne(
+        { _id: goal._id },
+        {
+          $set: {
+            currentSaved: newSaved,
+            progress,
+            updatedAt: now,
+          },
+        }
+      );
+    };
+
+    await Promise.all([
+      updateBonusGoal(referrerBonusGoal),
+      updateBonusGoal(referredBonusGoal),
+      usersCollection.updateOne(
+        { _id: referrer._id },
+        {
+          $inc: {
+            totalReferralBonus: BONUS_AMOUNT,
+            totalBonusEarned: BONUS_AMOUNT,
+          },
+          $set: { updatedAt: now },
+        }
+      ),
+      usersCollection.updateOne(
+        { _id: referredUser._id },
+        {
+          $inc: {
+            totalReferralBonus: BONUS_AMOUNT,
+            totalBonusEarned: BONUS_AMOUNT,
+          },
+          $set: { updatedAt: now },
+        }
+      ),
+      depositsCollection.insertMany([
+        {
+          userId: referrer._id,
+          goalId: referrerBonusGoal._id,
+          goalName: "Referral Bonus",
+          goalType: "bonus",
+          depositAmount: BONUS_AMOUNT,
+          paymentMethod: "referral",
+          transactionReference: `REF_BONUS_${referral._id}_REFERRER`,
+          status: "approved",
+          isBonus: true,
+          bonusType: "referral",
+          referredUserId: referredUser._id,
+          remarks: `Referral bonus for inviting ${referredUser.fullName || referredUser.firstName}`,
+          approvedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          userId: referredUser._id,
+          goalId: referredBonusGoal._id,
+          goalName: "Referral Bonus",
+          goalType: "bonus",
+          depositAmount: BONUS_AMOUNT,
+          paymentMethod: "referral",
+          transactionReference: `REF_BONUS_${referral._id}_REFERRED`,
+          status: "approved",
+          isBonus: true,
+          bonusType: "referral",
+          referrerId: referrer._id,
+          remarks: `Referral bonus for joining via ${referrer.fullName || referrer.firstName}`,
+          approvedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]),
+    ]);
+
+    await referralsCollection.updateOne(
+      { _id: referral._id },
+      {
+        $set: {
+          status: "completed",
+          bonusPaid: true,
+          referrerBonusPaid: true,
+          referredBonusPaid: true,
+          bonusPaidAt: now,
+          updatedAt: now,
+        },
+      }
+    );
+
+    return {
+      applied: true,
+      bonusAmount: BONUS_AMOUNT,
+      referrer: referrer.fullName || referrer.firstName,
+      referredUser: referredUser.fullName || referredUser.firstName,
+      message: `Referral bonus of Tk ${BONUS_AMOUNT} credited to both users`,
+    };
+  } catch (error) {
+    await referralsCollection.updateOne(
+      { _id: referral._id, status: "processing" },
+      {
+        $set: {
+          status: "pending",
+          updatedAt: new Date(),
+          bonusError: error.message,
+        },
+      }
+    );
+    throw error;
+  }
+};
+
 // Create referral (when user signs up with referral code)
 export const createReferral = async (req, res) => {
   try {
@@ -120,6 +326,22 @@ export const processReferralBonus = async (req, res) => {
         message: "User ID and deposit amount are required",
       });
     }
+
+    const bonusResult = await applyReferralBonusForApprovedDeposit({ userId, depositAmount });
+
+    if (!bonusResult.applied) {
+      return res.status(200).json({
+        success: true,
+        message: bonusResult.message,
+        data: bonusResult,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: bonusResult.message,
+      data: bonusResult,
+    });
 
     const usersCollection = db.collection("users");
     const referralsCollection = db.collection("referrals");

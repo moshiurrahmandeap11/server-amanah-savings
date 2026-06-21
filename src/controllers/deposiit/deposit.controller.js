@@ -1,6 +1,7 @@
 // controllers/deposit/deposit.controller.js
 import { db } from "../../database/db.js";
 import { ObjectId } from "mongodb";
+import { applyReferralBonusForApprovedDeposit } from "../referral/referral.controller.js";
 
 export const uploadDepositScreenshot = async (req, res) => {
   try {
@@ -35,7 +36,9 @@ export const createDeposit = async (req, res) => {
   try {
     const userId = req.user._id;
     const {
+      depositType = "goal",
       goalId,
+      circleId,
       depositAmount,
       paymentMethod,
       transactionReference,
@@ -44,10 +47,18 @@ export const createDeposit = async (req, res) => {
     } = req.body;
 
     // Validation
-    if (!goalId) {
+    const isCircleDeposit = depositType === "circle" || Boolean(circleId);
+    if (!isCircleDeposit && !goalId) {
       return res.status(400).json({
         success: false,
         message: "Goal ID is required",
+      });
+    }
+
+    if (isCircleDeposit && !circleId) {
+      return res.status(400).json({
+        success: false,
+        message: "Circle ID is required",
       });
     }
 
@@ -81,6 +92,7 @@ export const createDeposit = async (req, res) => {
 
     const usersCollection = db.collection("users");
     const goalsCollection = db.collection("goals");
+    const circlesCollection = db.collection("circles");
     const depositsCollection = db.collection("deposits");
 
     // Check if user exists
@@ -92,35 +104,87 @@ export const createDeposit = async (req, res) => {
       });
     }
 
-    // Check if goal exists and belongs to user
-    const goal = await goalsCollection.findOne({
-      _id: new ObjectId(goalId),
-      userId: new ObjectId(userId),
-    });
+    let goal = null;
+    let circle = null;
+    let depositTarget = null;
 
-    if (!goal) {
-      return res.status(404).json({
-        success: false,
-        message: "Goal not found",
-      });
-    }
+    if (isCircleDeposit) {
+      if (!ObjectId.isValid(circleId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid circle ID",
+        });
+      }
 
-    if (goal.status === "completed") {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot deposit to a completed goal",
+      circle = await circlesCollection.findOne({
+        _id: new ObjectId(circleId),
+        status: "active",
+        "members.userId": new ObjectId(userId),
       });
+
+      if (!circle) {
+        return res.status(404).json({
+          success: false,
+          message: "Circle not found or you are not a member",
+        });
+      }
+
+      depositTarget = {
+        targetType: "circle",
+        circleId: circle._id,
+        goalName: circle.circleName,
+        goalType: circle.purpose || "circle",
+      };
+    } else {
+      if (!ObjectId.isValid(goalId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid goal ID",
+        });
+      }
+
+      // Check if goal exists and belongs to user
+      goal = await goalsCollection.findOne({
+        _id: new ObjectId(goalId),
+        userId: new ObjectId(userId),
+      });
+
+      if (!goal) {
+        return res.status(404).json({
+          success: false,
+          message: "Goal not found",
+        });
+      }
+
+      if (goal.status === "completed") {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot deposit to a completed goal",
+        });
+      }
+
+      depositTarget = {
+        targetType: "goal",
+        goalId: goal._id,
+        goalName: goal.goalName,
+        goalType: goal.goalType,
+      };
     }
 
     // Convert to number
     const depositAmountNum = parseFloat(depositAmount);
+
+    if (isCircleDeposit && circle?.minDeposit && depositAmountNum < Number(circle.minDeposit)) {
+      return res.status(400).json({
+        success: false,
+        message: `Minimum deposit for this circle is ৳${Number(circle.minDeposit).toLocaleString()}`,
+      });
+    }
     
     // Create deposit object
     const newDeposit = {
       userId: new ObjectId(userId),
-      goalId: new ObjectId(goalId),
-      goalName: goal.goalName,
-      goalType: goal.goalType,
+      ...depositTarget,
       depositAmount: depositAmountNum,
       paymentMethod,
       transactionReference: transactionReference || null,
@@ -297,6 +361,9 @@ export const getAllDeposits = async (req, res) => {
         {
  $project: {
   _id: 1,
+  targetType: 1,
+  circleId: 1,
+  goalId: 1,
   goalName: 1,
   goalType: 1,
   depositAmount: 1,
@@ -373,6 +440,7 @@ export const approveDeposit = async (req, res) => {
 
     const depositsCollection = db.collection("deposits");
     const goalsCollection = db.collection("goals");
+    const circlesCollection = db.collection("circles");
     const usersCollection = db.collection("users");
 
     // Get the deposit
@@ -391,6 +459,96 @@ export const approveDeposit = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: `Deposit is already ${deposit.status}`,
+      });
+    }
+
+    if (deposit.targetType === "circle" || deposit.circleId) {
+      const circle = await circlesCollection.findOne({
+        _id: deposit.circleId,
+        "members.userId": deposit.userId,
+      });
+
+      if (!circle) {
+        return res.status(404).json({
+          success: false,
+          message: "Circle not found for this deposit",
+        });
+      }
+
+      const now = new Date();
+      await depositsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            status: "approved",
+            remarks: remarks || null,
+            approvedBy: new ObjectId(adminId),
+            approvedAt: now,
+            updatedAt: now,
+          },
+        }
+      );
+
+      const newTotalPool = (Number(circle.totalPool) || 0) + deposit.depositAmount;
+      await circlesCollection.updateOne(
+        {
+          _id: circle._id,
+          "members.userId": deposit.userId,
+        },
+        {
+          $inc: {
+            totalPool: deposit.depositAmount,
+            "members.$.totalDeposited": deposit.depositAmount,
+          },
+          $set: { updatedAt: now },
+        }
+      );
+
+      await usersCollection.updateOne(
+        {
+          _id: deposit.userId,
+          "circles.circleId": circle._id,
+        },
+        {
+          $inc: {
+            "circles.$.totalDeposited": deposit.depositAmount,
+            totalSaved: deposit.depositAmount,
+            totalDeposits: 1,
+          },
+          $set: {
+            "circles.$.updatedAt": now,
+            updatedAt: now,
+          },
+        }
+      );
+
+      let referralBonus = null;
+      try {
+        referralBonus = await applyReferralBonusForApprovedDeposit({
+          userId: deposit.userId,
+          depositAmount: deposit.depositAmount,
+        });
+      } catch (bonusError) {
+        console.error("Referral bonus processing error:", bonusError);
+        referralBonus = {
+          applied: false,
+          reason: "processing_failed",
+          message: bonusError.message || "Referral bonus processing failed",
+        };
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Circle deposit approved successfully",
+        data: {
+          deposit: { ...deposit, status: "approved" },
+          circle: {
+            circleId: circle._id,
+            oldTotalPool: circle.totalPool || 0,
+            newTotalPool,
+          },
+          referralBonus,
+        },
       });
     }
 
@@ -513,6 +671,21 @@ export const approveDeposit = async (req, res) => {
       console.error(`Expected: ${newCurrentSaved}, Got: ${verifyGoal.currentSaved}`);
     }
 
+    let referralBonus = null;
+    try {
+      referralBonus = await applyReferralBonusForApprovedDeposit({
+        userId: deposit.userId,
+        depositAmount: deposit.depositAmount,
+      });
+    } catch (bonusError) {
+      console.error("Referral bonus processing error:", bonusError);
+      referralBonus = {
+        applied: false,
+        reason: "processing_failed",
+        message: bonusError.message || "Referral bonus processing failed",
+      };
+    }
+
     return res.status(200).json({
       success: true,
       message: "Deposit approved successfully",
@@ -523,7 +696,8 @@ export const approveDeposit = async (req, res) => {
           newCurrentSaved,
           progress: newProgress,
           completed: newCurrentSaved >= goal.targetAmount
-        }
+        },
+        referralBonus,
       }
     });
   } catch (error) {

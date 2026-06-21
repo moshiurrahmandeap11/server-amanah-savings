@@ -3,6 +3,7 @@ import { Router } from "express";
 import {
   createGoal,
   getUserGoals,
+  getMyGoals,
   getGoalById,
   updateGoal,
   deleteGoal,
@@ -20,6 +21,7 @@ router.get("/", getUserGoals);
 // ==================== PROTECTED ROUTES ====================
 // Goal mutations and private user statistics require authentication.
 router.post("/", verifyToken, createGoal);
+router.get("/my", verifyToken, getMyGoals);
 router.get("/statistics", verifyToken, getGoalStatistics);
 router.get("/:id", getGoalById);
 router.put("/:id", verifyToken, updateGoal);

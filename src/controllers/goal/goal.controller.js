@@ -230,6 +230,52 @@ export const getGoalById = async (req, res) => {
   }
 };
 
+// Get authenticated user's goals
+export const getMyGoals = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { status, page = 1, limit = 100 } = req.query;
+
+    const goalsCollection = db.collection("goals");
+    const query = { userId: new ObjectId(userId) };
+
+    if (status && status !== "all") {
+      query.status = status;
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const limitNum = parseInt(limit);
+
+    const goals = await goalsCollection
+      .find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .toArray();
+
+    const total = await goalsCollection.countDocuments(query);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        goals,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limitNum),
+          totalItems: total,
+          itemsPerPage: limitNum,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get my goals error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch your goals",
+    });
+  }
+};
+
 // Admin: get all goals with owner details
 export const getAllGoalsAdmin = async (req, res) => {
   try {
