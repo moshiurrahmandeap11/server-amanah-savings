@@ -423,6 +423,8 @@ export const register = async (req, res) => {
       totalSaved: 0,
       totalDeposits: 0,
       totalWithdrawals: 0,
+      totalReferralBonus: 0,
+      totalBonusEarned: 0,
 
       // Verification Flags
       phoneVerified: true,
@@ -1047,6 +1049,8 @@ export const getCurrentUser = async (req, res) => {
         level: user.level,
         streak: user.streak,
         totalSaved: user.totalSaved,
+        totalReferralBonus: user.totalReferralBonus || 0,
+        totalBonusEarned: user.totalBonusEarned || 0,
         referralCode: user.referralCode,
         profilePicture: user.profilePicture,
         dob: user.dob,
