@@ -27,6 +27,88 @@ const generateOTP = () => {
 
 const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// Helper to sanitize user data for frontend - prevents null/undefined/NaN display issues
+const sanitizeUserResponse = (user) => {
+  if (!user) return null;
+  
+  const safeString = (val) => val || "";
+  const safeNumber = (val) => Number(val) || 0;
+  const safeBool = (val) => Boolean(val);
+  const safeDate = (val) => val || null;
+  const safeObject = (val) => val || null;
+  
+  return {
+    id: user._id,
+    firstName: safeString(user.firstName),
+    lastName: safeString(user.lastName),
+    fullName: safeString(user.fullName) || `${safeString(user.firstName)} ${safeString(user.lastName)}`.trim() || "User",
+    role: safeString(user.role) || "user",
+    phone: safeString(user.phone),
+    email: safeString(user.email),
+    selectedPlan: safeString(user.selectedPlan) || "bronze",
+    customPlanName: safeString(user.customPlanName) || null,
+    kyc: {
+      nidNumber: safeString(user.kyc?.nidNumber) || null,
+      nidFrontImage: safeString(user.kyc?.nidFrontImage) || null,
+      nidBackImage: safeString(user.kyc?.nidBackImage) || null,
+      birthCertificateImage: safeString(user.kyc?.birthCertificateImage) || null,
+      selfieImage: safeString(user.kyc?.selfieImage) || null,
+      passportImage: safeString(user.kyc?.passportImage) || null,
+      kycConsent: safeBool(user.kyc?.kycConsent),
+      status: safeString(user.kyc?.status) || "pending",
+      submittedAt: safeDate(user.kyc?.submittedAt) || null,
+      verifiedAt: safeDate(user.kyc?.verifiedAt) || null,
+      rejectionReason: safeString(user.kyc?.rejectionReason) || null,
+      islamicMode: safeBool(user.kyc?.islamicMode),
+      skipped: safeBool(user.kyc?.skipped),
+    },
+    kycCompleted: safeBool(user.kycCompleted),
+    accountActive: safeBool(user.accountActive),
+    level: safeNumber(user.level),
+    streak: safeNumber(user.streak),
+    totalSaved: safeNumber(user.totalSaved),
+    totalReferralBonus: safeNumber(user.totalReferralBonus),
+    totalBonusEarned: safeNumber(user.totalBonusEarned),
+    totalDeposits: safeNumber(user.totalDeposits),
+    totalWithdrawals: safeNumber(user.totalWithdrawals),
+    referralCode: safeString(user.referralCode),
+    profilePicture: safeString(user.profilePicture) || null,
+    dob: safeDate(user.dob) || null,
+    gender: safeString(user.gender) || null,
+    division: safeString(user.division) || null,
+    district: safeString(user.district) || null,
+    upazila: safeString(user.upazila) || null,
+    occupation: safeString(user.occupation) || null,
+    income: safeString(user.income) || null,
+    village: safeString(user.village) || null,
+    postOffice: safeString(user.postOffice) || null,
+    postCode: safeString(user.postCode) || null,
+    address: safeObject(user.address) || {
+      division: safeString(user.division) || null,
+      district: safeString(user.district) || null,
+      upazila: safeString(user.upazila) || null,
+      village: safeString(user.village) || null,
+      postOffice: safeString(user.postOffice) || null,
+      postCode: safeString(user.postCode) || null,
+    },
+    nominee: safeObject(user.nominee) || null,
+    paymentMethod: safeString(user.paymentMethod) || null,
+    paymentDetails: safeObject(user.paymentDetails) || null,
+    goal: safeObject(user.goal) || {
+      type: null,
+      customGoalName: null,
+      targetAmount: null,
+      monthlyDeposit: null,
+      duration: null,
+      currentSaved: 0,
+      progress: 0,
+    },
+    createdAt: safeDate(user.createdAt) || null,
+    updatedAt: safeDate(user.updatedAt) || null,
+    lastLogin: safeDate(user.lastLogin) || null,
+  };
+};
+
 const generateUniqueReferralCode = async (usersCollection, firstName = "USER") => {
   const prefix = String(firstName || "USER")
     .replace(/[^a-zA-Z0-9]/g, "")
@@ -1017,59 +1099,11 @@ export const getCurrentUser = async (req, res) => {
       });
     }
 
+    const sanitizedUser = sanitizeUserResponse(user);
+
     return res.status(200).json({
       success: true,
-      data: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        fullName: user.fullName,
-        role: user.role,
-        phone: user.phone,
-        email: user.email,
-        selectedPlan: user.selectedPlan,
-        customPlanName: user.customPlanName || null,
-        kyc: {
-          nidNumber: user.kyc?.nidNumber || null,
-          nidFrontImage: user.kyc?.nidFrontImage || null,
-          nidBackImage: user.kyc?.nidBackImage || null,
-          birthCertificateImage: user.kyc?.birthCertificateImage || null,
-          selfieImage: user.kyc?.selfieImage || null,
-          passportImage: user.kyc?.passportImage || null,
-          kycConsent: user.kyc?.kycConsent || false,
-          status: user.kyc?.status || "pending",
-          submittedAt: user.kyc?.submittedAt || null,
-          verifiedAt: user.kyc?.verifiedAt || null,
-          rejectionReason: user.kyc?.rejectionReason || null,
-          islamicMode: user.kyc?.islamicMode || false,
-          skipped: user.kyc?.skipped || false,
-        },
-        kycCompleted: user.kycCompleted || false,
-        accountActive: user.accountActive,
-        level: user.level,
-        streak: user.streak,
-        totalSaved: user.totalSaved,
-        totalReferralBonus: user.totalReferralBonus || 0,
-        totalBonusEarned: user.totalBonusEarned || 0,
-        referralCode: user.referralCode,
-        profilePicture: user.profilePicture,
-        dob: user.dob,
-        gender: user.gender,
-        division: user.division,
-        district: user.district,
-        upazila: user.upazila,
-        occupation: user.occupation,
-        income: user.income,
-        village: user.village,
-        postOffice: user.postOffice,
-        postCode: user.postCode,
-        nominee: user.nominee,
-        paymentMethod: user.paymentMethod,
-        paymentDetails: user.paymentDetails,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-        lastLogin: user.lastLogin,
-      },
+      data: sanitizedUser,
     });
   } catch (error) {
     console.error("Get current user error:", error);
@@ -2185,98 +2219,122 @@ export const getUserById = async (req, res) => {
       createdAt: c.createdAt,
     }));
 
-    // Prepare response data
+    // Prepare response data with sanitization
     const responseData = {
       // Basic Information
       id: user._id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      fullName: user.fullName,
-      phone: user.phone,
-      email: user.email,
-      role: user.role,
+      firstName: user.firstName || "",
+      lastName: user.lastName || "",
+      fullName: user.fullName || `${user.firstName || ""} ${user.lastName || ""}`.trim() || "User",
+      phone: user.phone || "",
+      email: user.email || "",
+      role: user.role || "user",
       
       // Personal Details
-      dob: user.dob,
-      gender: user.gender,
-      division: user.division,
-      district: user.district,
-      upazila: user.upazila,
-      village: user.village,
-      postOffice: user.postOffice,
-      postCode: user.postCode,
-      occupation: user.occupation,
-      income: user.income,
+      dob: user.dob || null,
+      gender: user.gender || null,
+      division: user.division || null,
+      district: user.district || null,
+      upazila: user.upazila || null,
+      village: user.village || null,
+      postOffice: user.postOffice || null,
+      postCode: user.postCode || null,
+      occupation: user.occupation || null,
+      income: user.income || null,
       
       // Address
-      address: user.address,
+      address: user.address || {
+        division: user.division || null,
+        district: user.district || null,
+        upazila: user.upazila || null,
+        village: user.village || null,
+        postOffice: user.postOffice || null,
+        postCode: user.postCode || null,
+      },
       
       // Account Status
-      accountActive: user.accountActive,
-      isBanned: user.isBanned,
-      isSuspended: user.isSuspended,
-      banReason: user.banReason,
-      suspensionReason: user.suspensionReason,
+      accountActive: Boolean(user.accountActive),
+      isBanned: Boolean(user.isBanned),
+      isSuspended: Boolean(user.isSuspended),
+      banReason: user.banReason || null,
+      suspensionReason: user.suspensionReason || null,
       
       // KYC Information
       kycStatus: user.kyc?.status || "pending",
-      kycCompleted: user.kycCompleted || false,
-      kyc: user.kyc,
+      kycCompleted: Boolean(user.kycCompleted),
+      kyc: {
+        nidNumber: user.kyc?.nidNumber || null,
+        nidFrontImage: user.kyc?.nidFrontImage || null,
+        nidBackImage: user.kyc?.nidBackImage || null,
+        birthCertificateImage: user.kyc?.birthCertificateImage || null,
+        selfieImage: user.kyc?.selfieImage || null,
+        passportImage: user.kyc?.passportImage || null,
+        kycConsent: Boolean(user.kyc?.kycConsent),
+        status: user.kyc?.status || "pending",
+        submittedAt: user.kyc?.submittedAt || null,
+        verifiedAt: user.kyc?.verifiedAt || null,
+        rejectionReason: user.kyc?.rejectionReason || null,
+        islamicMode: Boolean(user.kyc?.islamicMode),
+        skipped: Boolean(user.kyc?.skipped),
+      },
       
       // Plan & Level
-      selectedPlan: user.selectedPlan,
-      level: user.level,
-      streak: user.streak,
+      selectedPlan: user.selectedPlan || "bronze",
+      customPlanName: user.customPlanName || null,
+      level: Number(user.level) || 1,
+      streak: Number(user.streak) || 0,
       
       // Financial Statistics
-      totalSaved: user.totalSaved || 0,
-      totalDeposits: totalDeposits,
-      totalWithdrawals: totalWithdrawals,
-      netSavings: totalDeposits - totalWithdrawals,
-      pendingDeposits: pendingDeposits,
-      pendingWithdrawals: pendingWithdrawals,
+      totalSaved: Number(user.totalSaved) || 0,
+      totalDeposits: Number(totalDeposits) || 0,
+      totalWithdrawals: Number(totalWithdrawals) || 0,
+      netSavings: Number(totalDeposits - totalWithdrawals) || 0,
+      pendingDeposits: Number(pendingDeposits) || 0,
+      pendingWithdrawals: Number(pendingWithdrawals) || 0,
+      totalReferralBonus: Number(user.totalReferralBonus) || 0,
+      totalBonusEarned: Number(user.totalBonusEarned) || 0,
       
       // Goal Statistics
-      totalGoals: goals.length,
-      activeGoals: activeGoals,
-      completedGoals: completedGoals,
+      totalGoals: Number(goals.length) || 0,
+      activeGoals: Number(activeGoals) || 0,
+      completedGoals: Number(completedGoals) || 0,
       
       // Referral Information
-      referralCode: user.referralCode,
-      referredBy: user.referredBy,
-      referralBonusApplied: user.referralBonusApplied,
+      referralCode: user.referralCode || null,
+      referredBy: user.referredBy || null,
+      referralBonusApplied: Boolean(user.referralBonusApplied),
       
       // Nominee Information
-      nominee: user.nominee,
+      nominee: user.nominee || null,
       
       // Payment Information
-      paymentMethod: user.paymentMethod,
-      paymentDetails: user.paymentDetails,
+      paymentMethod: user.paymentMethod || null,
+      paymentDetails: user.paymentDetails || null,
       
       // Profile
-      profilePicture: user.profilePicture,
+      profilePicture: user.profilePicture || null,
       
       // Login Statistics
       loginStats: {
-        totalLogins: totalLoginSuccess,
-        failedLogins: totalLoginFailed,
-        lastLogin: user.lastLogin,
-        lastLoginIp: user.lastLoginIp,
-        lastLoginDevice: user.lastLoginDevice,
+        totalLogins: Number(totalLoginSuccess) || 0,
+        failedLogins: Number(totalLoginFailed) || 0,
+        lastLogin: user.lastLogin || null,
+        lastLoginIp: user.lastLoginIp || null,
+        lastLoginDevice: user.lastLoginDevice || null,
       },
       
       // Verification Flags
-      phoneVerified: user.phoneVerified,
-      emailVerified: user.emailVerified,
+      phoneVerified: Boolean(user.phoneVerified),
+      emailVerified: Boolean(user.emailVerified),
       
       // Marketing & Agreements
-      marketing: user.marketing,
-      termsAccepted: user.termsAccepted,
-      withdrawalPolicyAccepted: user.withdrawalPolicyAccepted,
+      marketing: Boolean(user.marketing),
+      termsAccepted: Boolean(user.termsAccepted),
+      withdrawalPolicyAccepted: Boolean(user.withdrawalPolicyAccepted),
       
       // Timestamps
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+      createdAt: user.createdAt || null,
+      updatedAt: user.updatedAt || null,
       
       // Detailed Lists
       deposits: formattedDeposits,
@@ -2288,13 +2346,13 @@ export const getUserById = async (req, res) => {
       
       // Summary
       summary: {
-        totalDepositAmount: totalDeposits,
-        totalWithdrawalAmount: totalWithdrawals,
-        netSavings: totalDeposits - totalWithdrawals,
-        totalGoals: goals.length,
-        completedGoals: completedGoals,
-        totalCircles: circles.length,
-        totalLoginAttempts: totalLoginSuccess + totalLoginFailed,
+        totalDepositAmount: Number(totalDeposits) || 0,
+        totalWithdrawalAmount: Number(totalWithdrawals) || 0,
+        netSavings: Number(totalDeposits - totalWithdrawals) || 0,
+        totalGoals: Number(goals.length) || 0,
+        completedGoals: Number(completedGoals) || 0,
+        totalCircles: Number(circles.length) || 0,
+        totalLoginAttempts: Number(totalLoginSuccess + totalLoginFailed) || 0,
         successRate: totalLoginSuccess + totalLoginFailed > 0 
           ? Math.round((totalLoginSuccess / (totalLoginSuccess + totalLoginFailed)) * 100) 
           : 0,
@@ -2304,13 +2362,13 @@ export const getUserById = async (req, res) => {
     // Add goal specific data if exists
     if (user.goal) {
       responseData.goal = {
-        type: user.goal.type,
+        type: user.goal.type || null,
         customGoalName: user.goal.customGoalName || null,
-        targetAmount: user.goal.targetAmount,
-        monthlyDeposit: user.goal.monthlyDeposit,
-        duration: user.goal.duration,
-        currentSaved: user.goal.currentSaved,
-        progress: user.goal.progress,
+        targetAmount: Number(user.goal.targetAmount) || 0,
+        monthlyDeposit: Number(user.goal.monthlyDeposit) || 0,
+        duration: Number(user.goal.duration) || 0,
+        currentSaved: Number(user.goal.currentSaved) || 0,
+        progress: Number(user.goal.progress) || 0,
       };
     }
 
