@@ -71,6 +71,7 @@ const sanitizeUserResponse = (user) => {
     totalBonusEarned: safeNumber(user.totalBonusEarned),
     totalDeposits: safeNumber(user.totalDeposits),
     totalWithdrawals: safeNumber(user.totalWithdrawals),
+    totalReferrals: safeNumber(user.totalReferrals),
     referralCode: safeString(user.referralCode),
     profilePicture: safeString(user.profilePicture) || null,
     dob: safeDate(user.dob) || null,
@@ -2303,6 +2304,7 @@ export const getUserById = async (req, res) => {
       referralCode: user.referralCode || null,
       referredBy: user.referredBy || null,
       referralBonusApplied: Boolean(user.referralBonusApplied),
+      totalReferrals: Number(user.totalReferrals) || 0,
       
       // Nominee Information
       nominee: user.nominee || null,
