@@ -2,6 +2,11 @@
 import { db } from "../../database/db.js";
 import { ObjectId } from "mongodb";
 
+const visibleUserGoalFilter = {
+  goalType: { $ne: "bonus" },
+  goalName: { $ne: "Referral Bonus" },
+};
+
 // Create a new goal
 export const createGoal = async (req, res) => {
   try {
@@ -155,7 +160,7 @@ export const getUserGoals = async (req, res) => {
 
     const goalsCollection = db.collection("goals");
     
-    const query = {};
+    const query = { ...visibleUserGoalFilter };
     if (status && status !== "all") {
       query.status = status;
     }
@@ -237,7 +242,7 @@ export const getMyGoals = async (req, res) => {
     const { status, page = 1, limit = 100 } = req.query;
 
     const goalsCollection = db.collection("goals");
-    const query = { userId: new ObjectId(userId) };
+    const query = { userId: new ObjectId(userId), ...visibleUserGoalFilter };
 
     if (status && status !== "all") {
       query.status = status;
@@ -716,7 +721,7 @@ export const getGoalStatistics = async (req, res) => {
     const goalsCollection = db.collection("goals");
 
     const goals = await goalsCollection
-      .find({ userId: new ObjectId(userId) })
+      .find({ userId: new ObjectId(userId), ...visibleUserGoalFilter })
       .toArray();
 
     const totalGoals = goals.length;
