@@ -3,6 +3,16 @@ import { db } from "../../database/db.js";
 import { ObjectId } from "mongodb";
 
 const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const DEFAULT_REFERRAL_BONUS = 500;
+const DEFAULT_REFERRAL_MIN_DEPOSIT = 500;
+
+const getReferralSettings = async () => {
+  const settings = await db.collection("platform_settings").findOne({ key: "platform" });
+  return {
+    bonusAmount: Number(settings?.referrals?.bonusAmount) || DEFAULT_REFERRAL_BONUS,
+    minimumDeposit: Number(settings?.referrals?.minimumDeposit) || DEFAULT_REFERRAL_MIN_DEPOSIT,
+  };
+};
 
 // Generate unique referral code
 const generateReferralCode = (name) => {
@@ -12,8 +22,7 @@ const generateReferralCode = (name) => {
 };
 
 export const applyReferralBonusForApprovedDeposit = async ({ userId, depositAmount }) => {
-  const BONUS_AMOUNT = 500;
-  const MIN_DEPOSIT_FOR_BONUS = 500;
+  const { bonusAmount: BONUS_AMOUNT, minimumDeposit: MIN_DEPOSIT_FOR_BONUS } = await getReferralSettings();
   const depositAmountNumber = Number(depositAmount) || 0;
 
   if (!userId || depositAmountNumber < MIN_DEPOSIT_FOR_BONUS) {
@@ -126,6 +135,7 @@ export const applyReferralBonusForApprovedDeposit = async ({ userId, depositAmou
       {
         $set: {
           status: "completed",
+          bonusAmount: BONUS_AMOUNT,
           bonusPaid: true,
           referrerBonusPaid: true,
           referredBonusPaid: true,
@@ -540,6 +550,7 @@ export const getReferralStats = async (req, res) => {
     const usersCollection = db.collection("users");
     const referralsCollection = db.collection("referrals");
 
+    const referralSettings = await getReferralSettings();
     const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
 
     if (!user) {
@@ -593,7 +604,7 @@ export const getReferralStats = async (req, res) => {
       {
         $group: {
           _id: null,
-          total: { $sum: 500 }, // Each referral gives 500 bonus
+          total: { $sum: { $ifNull: ["$bonusAmount", referralSettings.bonusAmount] } },
         },
       },
     ]).toArray();
@@ -611,6 +622,8 @@ export const getReferralStats = async (req, res) => {
           pendingReferrals,
           totalBonusEarned: totalBonus,
           thisMonthBonus: thisMonthBonus[0]?.total || 0,
+          bonusAmount: referralSettings.bonusAmount,
+          minimumDeposit: referralSettings.minimumDeposit,
         },
       },
     });
@@ -631,6 +644,7 @@ export const getReferralHistory = async (req, res) => {
 
     const referralsCollection = db.collection("referrals");
     const usersCollection = db.collection("users");
+    const referralSettings = await getReferralSettings();
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const limitNum = parseInt(limit);
@@ -662,6 +676,7 @@ export const getReferralHistory = async (req, res) => {
             bonusPaid: 1,
             createdAt: 1,
             bonusPaidAt: 1,
+            bonusAmount: 1,
             "referredUser.fullName": 1,
             "referredUser.firstName": 1,
             "referredUser.createdAt": 1,
@@ -679,22 +694,27 @@ export const getReferralHistory = async (req, res) => {
       const referredName = ref.referredUser?.fullName || ref.referredUser?.firstName || "Someone";
       const joinedDate = ref.referredUser?.createdAt;
       const depositDate = ref.bonusPaidAt;
+      const bonusAmount = Number(ref.bonusAmount) || referralSettings.bonusAmount;
+      const displayBonus = `৳${bonusAmount.toLocaleString("en-BD")}`;
 
       let status = "pending";
       let badge = "Waiting for deposit";
       let amount = "৳500";
       let amountColor = "text-foreground/50";
+      amount = displayBonus;
 
       if (ref.status === "completed" && ref.bonusPaid) {
         status = "bonus";
         badge = "Bonus Deposited";
         amount = "+৳500";
         amountColor = "text-primary";
+        amount = `+${displayBonus}`;
       } else if (ref.status === "pending") {
         status = "pending";
         badge = "Pending";
         amount = "৳500";
         amountColor = "text-foreground/50";
+        amount = displayBonus;
       }
 
       return {

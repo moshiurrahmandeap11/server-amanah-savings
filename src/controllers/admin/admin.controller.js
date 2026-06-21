@@ -2079,6 +2079,10 @@ export const getPlatformSettings = async (req, res) => {
           maxLoginAttempts: 5,
           passwordMinLength: 8,
         },
+        referrals: {
+          bonusAmount: 500,
+          minimumDeposit: 500,
+        },
         maintenance: { mode: false, message: "", allowedIps: [] },
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -2443,6 +2447,10 @@ export const getAllTransactions = async (req, res) => {
           completedWithdrawals,
           totalDepositAmount,
           totalWithdrawalAmount,
+          pending: pendingDeposits + pendingWithdrawals,
+          approved: approvedDeposits + completedWithdrawals,
+          totalDeposits: totalDepositAmount,
+          totalWithdrawals: totalWithdrawalAmount,
         },
         pagination: {
           currentPage: parseInt(page),
