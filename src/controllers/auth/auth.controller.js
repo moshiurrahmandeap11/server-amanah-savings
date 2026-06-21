@@ -1,4 +1,4 @@
-import { sendOtpEmail } from "../../utils/emailService.js";
+import { sendOtpEmail, sendPasswordResetOtpEmail } from "../../utils/emailService.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
@@ -1157,6 +1157,137 @@ export const verifyEmailOtp = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Email verification failed",
+    });
+  }
+};
+
+export const sendPasswordResetOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+    const user = await usersCollection.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "No account found with this email address",
+      });
+    }
+
+    const otp = generateOTP();
+    const otpCollection = db.collection("otps");
+
+    // Delete any existing password reset OTPs for this email
+    await otpCollection.deleteMany({ email, type: "password_reset" });
+
+    await otpCollection.insertOne({
+      email,
+      otp,
+      type: "password_reset",
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+    });
+
+    // Send password reset OTP email
+    const emailResult = await sendPasswordResetOtpEmail(email, otp);
+
+    if (!emailResult.success) {
+      console.error("Failed to send password reset email:", emailResult.error);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset OTP sent to your email",
+      ...(process.env.NODE_ENV !== "production" && { otp }),
+    });
+  } catch (error) {
+    console.error("Send password reset OTP error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to send password reset OTP",
+    });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Email, OTP, and new password are required",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 8 characters",
+      });
+    }
+
+    const otpCollection = db.collection("otps");
+    const usersCollection = db.collection("users");
+
+    // Verify the OTP
+    const otpRecord = await otpCollection.findOne({
+      email,
+      otp,
+      type: "password_reset",
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP",
+      });
+    }
+
+    // Find the user
+    const user = await usersCollection.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update user's password
+    await usersCollection.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          password: hashedPassword,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    // Delete the used OTP
+    await otpCollection.deleteOne({ _id: otpRecord._id });
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully. Please login with your new password.",
+    });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to reset password",
     });
   }
 };

@@ -16,7 +16,9 @@ import {
   getUserById,
   searchUserByPhone,
   validateReferralCode,
-  uploadKycDocuments, // Add this
+  uploadKycDocuments,
+  sendPasswordResetOtp,
+  resetPassword,
 } from "../../controllers/auth/auth.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
 import { uploadSingle } from "../../middlewares/upload.js";
@@ -34,6 +36,10 @@ router.post("/verify-email-otp", verifyEmailOtp);
 
 // Login
 router.post("/login", login);
+
+// Forgot Password (Public)
+router.post("/forgot-password/send-otp", sendPasswordResetOtp);
+router.post("/forgot-password/reset", resetPassword);
 
 // Referral code validation
 router.get("/validate-referral/:code", validateReferralCode);

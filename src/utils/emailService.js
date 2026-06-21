@@ -55,6 +55,24 @@ export const sendOtpEmail = async (email, otp) => {
   return sendEmail({ to: email, subject: "Your Amanah Savings Verification Code", html, text: `Your verification code is: ${otp}. This code will expire in 5 minutes.` });
 };
 
+export const sendPasswordResetOtpEmail = async (email, otp) => {
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+      <h2 style="color: #059669; text-align: center;">Amanah Savings</h2>
+      <p style="font-size: 16px; color: #333;">Assalamu Alaikum,</p>
+      <p style="font-size: 16px; color: #333;">You requested a password reset. Your verification code is:</p>
+      <div style="text-align: center; padding: 20px; background: #f0fdf4; border-radius: 8px; margin: 20px 0;">
+        <span style="font-size: 32px; font-weight: bold; color: #059669; letter-spacing: 8px;">${otp}</span>
+      </div>
+      <p style="font-size: 14px; color: #666;">This code will expire in 5 minutes.</p>
+      <p style="font-size: 14px; color: #666;">If you didn't request a password reset, please ignore this email or contact support if you're concerned about your account security.</p>
+      <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
+      <p style="font-size: 12px; color: #999; text-align: center;">Amanah Savings — Islamic Savings Platform for Bangladesh</p>
+    </div>
+  `;
+  return sendEmail({ to: email, subject: "Password Reset Code - Amanah Savings", html, text: `Your password reset code is: ${otp}. This code will expire in 5 minutes. If you didn't request this, please ignore.` });
+};
+
 export const sendNotificationEmail = async (email, title, message) => {
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
