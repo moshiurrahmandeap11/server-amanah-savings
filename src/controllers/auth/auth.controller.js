@@ -94,6 +94,7 @@ export const register = async (req, res) => {
 
       // Step 6 - Plan & Goal
       selectedPlan,
+      customPlanName,
       goalType,
       targetAmount,
       monthlyDeposit,
@@ -355,6 +356,7 @@ export const register = async (req, res) => {
 
       // Plan & Goal
       selectedPlan,
+      customPlanName: customPlanName || null,
       goal: {
         type: goalType || null,
         targetAmount: targetAmount ? parseInt(targetAmount) : null,
@@ -494,6 +496,7 @@ export const register = async (req, res) => {
           phone: user.phone,
           email: user.email,
           selectedPlan: user.selectedPlan,
+          customPlanName: user.customPlanName || null,
           kyc: {
           nidNumber: user.kyc?.nidNumber || null,
           nidFrontImage: user.kyc?.nidFrontImage || null,
@@ -1021,6 +1024,7 @@ export const getCurrentUser = async (req, res) => {
         phone: user.phone,
         email: user.email,
         selectedPlan: user.selectedPlan,
+        customPlanName: user.customPlanName || null,
         kyc: {
           nidNumber: user.kyc?.nidNumber || null,
           nidFrontImage: user.kyc?.nidFrontImage || null,
