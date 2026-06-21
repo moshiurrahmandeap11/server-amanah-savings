@@ -2031,6 +2031,38 @@ export const getFraudAlerts = async (req, res) => {
 };
 
 // ==================== ADMIN SETTINGS & CMS ====================
+export const defaultPaymentInstructions = {
+  en: {
+    title: "Payment Instructions",
+    sendMoneyToLabel: "Send money to:",
+    sendMoneyTo: "018XXXXXXXX",
+    amountLabel: "Amount:",
+    amountValue: "৳{amount}",
+    referenceLabel: "Reference:",
+    reference: "DEV-TEST-DEPOSIT",
+  },
+  bn: {
+    title: "পেমেন্ট নির্দেশনা",
+    sendMoneyToLabel: "টাকা পাঠান:",
+    sendMoneyTo: "018XXXXXXXX",
+    amountLabel: "পরিমাণ:",
+    amountValue: "৳{amount}",
+    referenceLabel: "রেফারেন্স:",
+    reference: "DEV-TEST-DEPOSIT",
+  },
+};
+
+export const normalizePaymentInstructions = (instructions = {}) => ({
+  en: {
+    ...defaultPaymentInstructions.en,
+    ...(instructions.en || {}),
+  },
+  bn: {
+    ...defaultPaymentInstructions.bn,
+    ...(instructions.bn || {}),
+  },
+});
+
 export const getPlatformSettings = async (req, res) => {
   try {
     const settingsCollection = db.collection("platform_settings");
@@ -2063,6 +2095,7 @@ export const getPlatformSettings = async (req, res) => {
           rocketEnabled: true,
           bankTransferEnabled: true,
           cardEnabled: false,
+          instructions: defaultPaymentInstructions,
         },
         notifications: {
           depositConfirmation: true,
@@ -2088,6 +2121,11 @@ export const getPlatformSettings = async (req, res) => {
         updatedAt: new Date(),
       };
     }
+    settings.payments = {
+      ...(settings.payments || {}),
+      instructions: normalizePaymentInstructions(settings.payments?.instructions),
+    };
+
     return res.status(200).json({ success: true, data: settings });
   } catch (error) {
     console.error("Get platform settings error:", error);
@@ -2104,9 +2142,21 @@ export const updatePlatformSettings = async (req, res) => {
   try {
     const updates = req.body;
     const settingsCollection = db.collection("platform_settings");
+    const existingSettings = await settingsCollection.findOne({ key: "platform" });
+    const existingPayments = existingSettings?.payments || {};
+    const nextPayments = updates.payments
+      ? {
+          ...existingPayments,
+          ...updates.payments,
+          instructions: normalizePaymentInstructions(
+            updates.payments.instructions || existingPayments.instructions,
+          ),
+        }
+      : existingPayments;
+
     await settingsCollection.updateOne(
       { key: "platform" },
-      { $set: { ...updates, updatedAt: new Date() } },
+      { $set: { ...updates, payments: nextPayments, updatedAt: new Date() } },
       { upsert: true },
     );
     return res
@@ -2120,6 +2170,29 @@ export const updatePlatformSettings = async (req, res) => {
         success: false,
         message: error.message || "Failed to update settings",
       });
+  }
+};
+
+export const getPaymentInstructions = async (req, res) => {
+  try {
+    const settingsCollection = db.collection("platform_settings");
+    const settings = await settingsCollection.findOne(
+      { key: "platform" },
+      { projection: { "payments.instructions": 1 } },
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        instructions: normalizePaymentInstructions(settings?.payments?.instructions),
+      },
+    });
+  } catch (error) {
+    console.error("Get payment instructions error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch payment instructions",
+    });
   }
 };
 

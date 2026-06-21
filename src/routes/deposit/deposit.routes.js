@@ -8,6 +8,7 @@ import {
   approveDeposit,
   rejectDeposit,
   getDepositStatistics,
+  getPaymentInstructions,
   uploadDepositScreenshot,
   debugGoalDeposit,
 } from "../../controllers/deposiit/deposit.controller.js";
@@ -20,6 +21,8 @@ const router = Router();
 // ==================== PROTECTED ROUTES ====================
 // All deposit routes require authentication
 router.use(verifyToken);
+
+router.get("/payment-instructions", getPaymentInstructions);
 
 // Screenshot upload route
 router.post(

@@ -2,6 +2,31 @@
 import { db } from "../../database/db.js";
 import { ObjectId } from "mongodb";
 import { applyReferralBonusForApprovedDeposit } from "../referral/referral.controller.js";
+import {
+  defaultPaymentInstructions,
+  normalizePaymentInstructions,
+} from "../admin/admin.controller.js";
+
+export const getPaymentInstructions = async (req, res) => {
+  try {
+    const settings = await db
+      .collection("platform_settings")
+      .findOne({ key: "platform" }, { projection: { "payments.instructions": 1 } });
+
+    return res.status(200).json({
+      success: true,
+      data: normalizePaymentInstructions(
+        settings?.payments?.instructions || defaultPaymentInstructions,
+      ),
+    });
+  } catch (error) {
+    console.error("Get payment instructions error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch payment instructions",
+    });
+  }
+};
 
 export const uploadDepositScreenshot = async (req, res) => {
   try {
