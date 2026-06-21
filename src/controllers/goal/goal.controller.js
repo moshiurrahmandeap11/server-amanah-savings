@@ -290,7 +290,10 @@ export const getAllGoalsAdmin = async (req, res) => {
     const skip = (pageNumber - 1) * limitNumber;
 
     const goalsCollection = db.collection("goals");
-    const match = {};
+    const match = {
+      goalType: { $ne: "bonus" },
+      goalName: { $ne: "Referral Bonus" },
+    };
 
     if (status && status !== "all") {
       match.status = status;
