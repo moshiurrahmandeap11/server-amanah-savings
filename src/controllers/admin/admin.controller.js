@@ -2232,6 +2232,12 @@ export const getCmsContent = async (req, res) => {
         },
         footer: {
           copyright: "© 2026 Amanah Savings. All rights reserved.",
+          socials: {
+            facebook: "",
+            twitter: "",
+            instagram: "",
+            linkedin: "",
+          },
           links: [
             { label: "Privacy Policy", url: "/privacy" },
             { label: "Terms of Service", url: "/terms" },

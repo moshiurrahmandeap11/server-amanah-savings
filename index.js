@@ -31,6 +31,7 @@ import notificationRoutes from "./src/routes/notification/notification.routes.js
 import helpRoutes from "./src/routes/help/help.routes.js";
 import contactRoutes from "./src/routes/contact/contact.routes.js";
 import adminRoutes from "./src/routes/admin/admin.routes.js";
+import { getCmsContent } from "./src/controllers/admin/admin.controller.js";
 
 app.use(
   cors({
@@ -71,6 +72,7 @@ app.use("/api/referrals", referralRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/help", helpRoutes);
 app.use("/api/contact", contactRoutes);
+app.get("/api/cms", getCmsContent);
 
 app.use("/api/admin", adminRoutes);
 
