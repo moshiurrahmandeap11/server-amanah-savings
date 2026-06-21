@@ -96,6 +96,7 @@ export const register = async (req, res) => {
       selectedPlan,
       customPlanName,
       goalType,
+      customGoalName,
       targetAmount,
       monthlyDeposit,
       duration,
@@ -359,6 +360,7 @@ export const register = async (req, res) => {
       customPlanName: customPlanName || null,
       goal: {
         type: goalType || null,
+        customGoalName: customGoalName || null,
         targetAmount: targetAmount ? parseInt(targetAmount) : null,
         monthlyDeposit: monthlyDeposit ? parseInt(monthlyDeposit) : null,
         duration: duration ? parseInt(duration) : null,
@@ -2299,6 +2301,7 @@ export const getUserById = async (req, res) => {
     if (user.goal) {
       responseData.goal = {
         type: user.goal.type,
+        customGoalName: user.goal.customGoalName || null,
         targetAmount: user.goal.targetAmount,
         monthlyDeposit: user.goal.monthlyDeposit,
         duration: user.goal.duration,
