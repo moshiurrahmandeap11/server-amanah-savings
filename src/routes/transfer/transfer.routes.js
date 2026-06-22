@@ -22,11 +22,11 @@ router.post("/goal-to-goal", goalToGoalTransfer);
 router.post("/user-to-user", userToUserTransfer);
 router.get("/search-user", searchUserByPhone);
 
+// Admin routes
+router.get("/admin/all", verifyAdmin, getAllTransfers);
+
 // User routes
 router.get("/", getUserTransfers);
 router.get("/:id", getTransferById);
-
-// Admin routes
-router.get("/admin/all", verifyAdmin, getAllTransfers);
 
 export default router;
