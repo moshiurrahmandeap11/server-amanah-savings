@@ -24,13 +24,11 @@ router.use(verifyToken);
 router.post("/", createAutoSaveRule);
 router.get("/", getUserAutoSaveRules);
 router.get("/statistics", getAutoSaveStatistics);
+router.get("/admin/all", verifyAdmin, getAllAutoSaveRules);
 router.get("/:id", getAutoSaveRuleById);
 router.put("/:id", updateAutoSaveRule);
 router.patch("/:id/pause", pauseAutoSaveRule);
 router.patch("/:id/resume", resumeAutoSaveRule);
 router.delete("/:id", deleteAutoSaveRule);
-
-// Admin routes
-router.get("/admin/all", verifyAdmin, getAllAutoSaveRules);
 
 export default router;
