@@ -1647,7 +1647,11 @@ export const getAnalyticsData = async (req, res) => {
       .toArray();
 
     const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const [activeLast7Days, totalActiveUsers] = await Promise.all([
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+    const [activeLast7Days, totalActiveUsers, totalUsers, newUsersToday, todaysDeposits] = await Promise.all([
       loginHistoryCollection
         .aggregate([
           { $match: { loginTime: { $gte: last7Days }, success: true } },
@@ -1657,12 +1661,21 @@ export const getAnalyticsData = async (req, res) => {
         .toArray()
         .then((r) => r[0]?.count || 0),
       usersCollection.countDocuments({ accountActive: true }),
+      usersCollection.countDocuments(),
+      usersCollection.countDocuments({ createdAt: { $gte: todayStart, $lt: todayEnd } }),
+      db.collection("deposits").aggregate([
+        { $match: { createdAt: { $gte: todayStart, $lt: todayEnd }, status: "approved" } },
+        { $group: { _id: null, total: { $sum: "$depositAmount" } } },
+      ]).toArray().then(r => r[0]?.total || 0),
     ]);
 
     return res.status(200).json({
       success: true,
       data: {
-        dau: dauData,
+        dau: {
+          labels: dauData.map(d => d.date),
+          values: dauData.map(d => d.users),
+        },
         deviceBreakdown,
         divisionBreakdown,
         sessionStats: {
@@ -1673,6 +1686,9 @@ export const getAnalyticsData = async (req, res) => {
               ? Math.round((activeLast7Days / totalActiveUsers) * 100)
               : 0,
         },
+        totalUsers,
+        newUsersToday,
+        todaysDeposits,
       },
     });
   } catch (error) {
