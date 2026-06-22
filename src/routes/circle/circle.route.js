@@ -10,6 +10,7 @@ import {
   generateInviteLink,
   joinCircleByInvite,
   deleteCircle,
+  updateCircle,
 } from "../../controllers/circle/circle.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
 import jwt from "jsonwebtoken";
@@ -47,6 +48,7 @@ router.delete("/:id/leave", verifyToken, leaveCircle);
 router.post("/:id/invite", verifyToken, generateInviteLink);        // Generate invite link
 router.post("/join/:inviteCode", verifyToken, joinCircleByInvite); // Join private circle by invite
 
+router.patch("/:id", verifyToken, updateCircle);                    // Update circle (admin only)
 router.delete("/:id", verifyToken, deleteCircle);                   
 
 export default router;

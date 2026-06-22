@@ -140,32 +140,53 @@ export const getUserById = async (req, res) => {
       .limit(10)
       .toArray();
 
+    const circles = await db
+      .collection("circles")
+      .find({ "members.userId": new ObjectId(id) })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const transfers = await db
+      .collection("transfers")
+      .find({
+        $or: [
+          { userId: new ObjectId(id) },
+          { fromUserId: new ObjectId(id) },
+          { toUserId: new ObjectId(id) },
+        ],
+      })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .toArray();
+
     return res.status(200).json({
       success: true,
       data: {
         user: { id: user._id, ...user },
         deposits: deposits.map((d) => ({
           id: d._id,
-          amount: d.depositAmount, // ✅ fixed
+          amount: d.depositAmount,
           status: d.status,
-          method: d.paymentMethod, // ✅ fixed
+          method: d.paymentMethod,
           goalName: d.goalName,
           createdAt: d.createdAt,
         })),
         withdrawals: withdrawals.map((w) => ({
           id: w._id,
-          amount: w.withdrawalAmount, // ✅ fixed
+          amount: w.withdrawalAmount,
           status: w.status,
-          method: w.paymentMethod, // ✅ fixed
+          method: w.paymentMethod,
           goalName: w.goalName,
           createdAt: w.createdAt,
         })),
         goals: goals.map((g) => ({
           id: g._id,
-          title: g.goalName, // ✅ fixed
+          title: g.goalName,
           targetAmount: g.targetAmount,
-          currentAmount: g.currentSaved, // ✅ fixed
+          currentAmount: g.currentSaved,
           status: g.status,
+          goalType: g.goalType,
+          createdAt: g.createdAt,
         })),
         loginHistory: loginHistory.map((h) => ({
           id: h._id,
@@ -174,6 +195,33 @@ export const getUserById = async (req, res) => {
           device: h.device,
           location: h.location,
           loginTime: h.loginTime,
+        })),
+        circles: circles.map((c) => ({
+          id: c._id,
+          name: c.circleName,
+          purpose: c.purpose,
+          circleType: c.circleType,
+          targetAmount: c.targetAmount,
+          totalPool: c.totalPool,
+          currentMembers: c.currentMembers,
+          maxMembers: c.maxMembers,
+          status: c.status,
+          role: (c.members || []).find((m) => m.userId.toString() === id)?.role || "member",
+          joinedAt: (c.members || []).find((m) => m.userId.toString() === id)?.joinedAt,
+          createdAt: c.createdAt,
+        })),
+        transfers: transfers.map((tr) => ({
+          id: tr._id,
+          type: tr.transferType || tr.type || "transfer",
+          amount: tr.amount,
+          status: tr.status,
+          fromGoalName: tr.fromGoalName || tr.sourceGoalName,
+          toGoalName: tr.toGoalName || tr.destinationGoalName,
+          fromUserName: tr.fromUserName,
+          toUserName: tr.toUserName,
+          toPhone: tr.toPhone,
+          note: tr.note || tr.description,
+          createdAt: tr.createdAt,
         })),
       },
     });

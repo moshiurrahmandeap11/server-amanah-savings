@@ -143,6 +143,14 @@ export const getUserCircles = async (req, res) => {
 
     const total = await circlesCollection.countDocuments(query);
 
+    // Fetch user details for all members
+    const userIds = circles.flatMap(c => (c.members || []).map(m => m.userId)).filter(Boolean);
+    const usersCollection = db.collection("users");
+    const users = userIds.length > 0 
+      ? await usersCollection.find({ _id: { $in: userIds } }).project({ _id: 1, fullName: 1, firstName: 1, lastName: 1, phone: 1, email: 1 }).toArray()
+      : [];
+    const userMap = new Map(users.map(u => [u._id.toString(), u]));
+
     // Format circles for frontend
     const formattedCircles = circles.map(circle => ({
       _id: circle._id,
@@ -163,7 +171,13 @@ export const getUserCircles = async (req, res) => {
       circleType: circle.circleType,
       currentMembers: circle.currentMembers,
       maxMembers: circle.maxMembers,
-      membersList: circle.members,
+      membersList: (circle.members || []).map(m => ({
+        userId: m.userId,
+        role: m.role,
+        joinedAt: m.joinedAt,
+        totalDeposited: m.totalDeposited,
+        user: userMap.get(m.userId.toString()) || null,
+      })),
       totalPoolValue: circle.totalPool,
       createdAt: circle.createdAt,
     }));
@@ -424,6 +438,18 @@ export const getCircleById = async (req, res) => {
       }
     }
 
+    const isMember = userId ? (circle.members || []).some(
+      member => member.userId.toString() === String(userId)
+    ) : false;
+
+    // Fetch user details for all members
+    const userIds = (circle.members || []).map(m => m.userId).filter(Boolean);
+    const usersCollection = db.collection("users");
+    const users = userIds.length > 0 
+      ? await usersCollection.find({ _id: { $in: userIds } }).project({ _id: 1, fullName: 1, firstName: 1, lastName: 1, phone: 1, email: 1 }).toArray()
+      : [];
+    const userMap = new Map(users.map(u => [u._id.toString(), u]));
+
     const formattedCircle = {
       _id: circle._id,
       emoji: getCircleEmoji(circle.purpose),
@@ -435,6 +461,14 @@ export const getCircleById = async (req, res) => {
         ? new Date(circle.nextPayoutDate).toLocaleString('default', { month: 'short' })
         : "Not scheduled",
       color: getCircleColor(circle.purpose),
+      isMember,
+      membersList: (circle.members || []).map(m => ({
+        userId: m.userId,
+        role: m.role,
+        joinedAt: m.joinedAt,
+        totalDeposited: m.totalDeposited,
+        user: userMap.get(m.userId.toString()) || null,
+      })),
       ...circle,
     };
 
@@ -900,21 +934,30 @@ export const getPublicCircles = async (req, res) => {
       .limit(limitNum)
       .toArray();
 
-    const formattedCircles = circles.map(circle => ({
-      _id: circle._id,
-      emoji: getCircleEmoji(circle.purpose),
-      name: circle.circleName,
-      purpose: circle.purpose,
-      members: circle.currentMembers,
-      maxMembers: circle.maxMembers,
-      totalPool: `৳${circle.totalPool.toLocaleString()}`,
-      minDeposit: circle.minDeposit,
-      targetAmount: circle.targetAmount,
-      description: circle.description,
-      circleType: circle.circleType,
-      createdBy: circle.createdBy,
-      createdAt: circle.createdAt,
-    }));
+    const userId = req.user?._id;
+
+    const formattedCircles = circles.map(circle => {
+      const isMember = userId ? (circle.members || []).some(
+        member => member.userId.toString() === String(userId)
+      ) : false;
+      
+      return {
+        _id: circle._id,
+        emoji: getCircleEmoji(circle.purpose),
+        name: circle.circleName,
+        purpose: circle.purpose,
+        members: circle.currentMembers,
+        maxMembers: circle.maxMembers,
+        totalPool: `৳${circle.totalPool.toLocaleString()}`,
+        minDeposit: circle.minDeposit,
+        targetAmount: circle.targetAmount,
+        description: circle.description,
+        circleType: circle.circleType,
+        createdBy: circle.createdBy,
+        createdAt: circle.createdAt,
+        isMember,
+      };
+    });
 
     const total = await circlesCollection.countDocuments(query);
 
@@ -1201,6 +1244,84 @@ export const deleteCircle = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to delete circle",
+    });
+  }
+};
+
+// Update a circle (only admin can update)
+export const updateCircle = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+    const {
+      circleName,
+      purpose,
+      targetAmount,
+      maxMembers,
+      minDeposit,
+      description,
+      circleType,
+      status,
+    } = req.body;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid circle ID",
+      });
+    }
+
+    const circlesCollection = db.collection("circles");
+    const circle = await circlesCollection.findOne({ _id: new ObjectId(id) });
+
+    if (!circle) {
+      return res.status(404).json({
+        success: false,
+        message: "Circle not found",
+      });
+    }
+
+    // Check if user is admin of this circle
+    const userMember = circle.members.find(
+      member => member.userId.toString() === userId
+    );
+
+    if (!userMember || userMember.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only circle admin can update this circle",
+      });
+    }
+
+    // Build update object with only provided fields
+    const updateData = { updatedAt: new Date() };
+    if (circleName !== undefined) updateData.circleName = circleName;
+    if (purpose !== undefined) updateData.purpose = purpose;
+    if (targetAmount !== undefined) updateData.targetAmount = parseFloat(targetAmount);
+    if (maxMembers !== undefined) updateData.maxMembers = parseInt(maxMembers);
+    if (minDeposit !== undefined) updateData.minDeposit = parseFloat(minDeposit);
+    if (description !== undefined) updateData.description = description || null;
+    if (circleType !== undefined) updateData.circleType = circleType;
+    if (status !== undefined) updateData.status = status;
+
+    await circlesCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateData }
+    );
+
+    // Get updated circle
+    const updatedCircle = await circlesCollection.findOne({ _id: new ObjectId(id) });
+
+    return res.status(200).json({
+      success: true,
+      message: "Circle updated successfully",
+      data: updatedCircle,
+    });
+  } catch (error) {
+    console.error("Update circle error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update circle",
     });
   }
 };
