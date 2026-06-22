@@ -239,6 +239,14 @@ export const getAllCirclesAdmin = async (req, res) => {
           },
           { $unwind: { path: "$owner", preserveNullAndEmptyArrays: true } },
           {
+            $lookup: {
+              from: "users",
+              localField: "members.userId",
+              foreignField: "_id",
+              as: "memberUsers",
+            },
+          },
+          {
             $project: {
               circleName: 1,
               purpose: 1,
@@ -249,7 +257,6 @@ export const getAllCirclesAdmin = async (req, res) => {
               circleType: 1,
               createdBy: 1,
               currentMembers: 1,
-              members: 1,
               totalPool: 1,
               status: 1,
               createdAt: 1,
@@ -261,6 +268,30 @@ export const getAllCirclesAdmin = async (req, res) => {
                 fullName: "$owner.fullName",
                 phone: "$owner.phone",
                 email: "$owner.email",
+              },
+              members: {
+                $map: {
+                  input: "$members",
+                  as: "member",
+                  in: {
+                    userId: "$$member.userId",
+                    role: "$$member.role",
+                    joinedAt: "$$member.joinedAt",
+                    totalDeposited: "$$member.totalDeposited",
+                    user: {
+                      $arrayElemAt: [
+                        {
+                          $filter: {
+                            input: "$memberUsers",
+                            as: "u",
+                            cond: { $eq: ["$$u._id", "$$member.userId"] },
+                          },
+                        },
+                        0,
+                      ],
+                    },
+                  },
+                },
               },
             },
           },
