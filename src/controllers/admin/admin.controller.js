@@ -104,15 +104,27 @@ export const getAllUsers = async (req, res) => {
 export const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
+    console.log("[getUserById] Requested user ID:", id);
+
+    if (!id || !ObjectId.isValid(id)) {
+      console.log("[getUserById] Invalid user ID format:", id);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID format",
+      });
+    }
+
     const usersCollection = db.collection("users");
     const user = await usersCollection.findOne(
       { _id: new ObjectId(id) },
       { projection: { password: 0, pin: 0 } },
     );
-    if (!user)
+    if (!user) {
+      console.log("[getUserById] User not found for ID:", id);
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
+    }
 
     const deposits = await db
       .collection("deposits")
@@ -196,20 +208,23 @@ export const getUserById = async (req, res) => {
           location: h.location,
           loginTime: h.loginTime,
         })),
-        circles: circles.map((c) => ({
-          id: c._id,
-          name: c.circleName,
-          purpose: c.purpose,
-          circleType: c.circleType,
-          targetAmount: c.targetAmount,
-          totalPool: c.totalPool,
-          currentMembers: c.currentMembers,
-          maxMembers: c.maxMembers,
-          status: c.status,
-          role: (c.members || []).find((m) => m.userId.toString() === id)?.role || "member",
-          joinedAt: (c.members || []).find((m) => m.userId.toString() === id)?.joinedAt,
-          createdAt: c.createdAt,
-        })),
+        circles: circles.map((c) => {
+          const memberEntry = (c.members || []).find((m) => m.userId && m.userId.toString() === id);
+          return {
+            id: c._id,
+            name: c.circleName,
+            purpose: c.purpose,
+            circleType: c.circleType,
+            targetAmount: c.targetAmount,
+            totalPool: c.totalPool,
+            currentMembers: c.currentMembers,
+            maxMembers: c.maxMembers,
+            status: c.status,
+            role: memberEntry?.role || "member",
+            joinedAt: memberEntry?.joinedAt,
+            createdAt: c.createdAt,
+          };
+        }),
         transfers: transfers.map((tr) => ({
           id: tr._id,
           type: tr.transferType || tr.type || "transfer",
