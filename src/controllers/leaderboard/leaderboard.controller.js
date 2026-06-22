@@ -70,6 +70,28 @@ export const getMonthlyLeaderboard = async (req, res) => {
         $limit: 100
       }
     ]).toArray();
+
+    const statsResult = await depositsCollection.aggregate([
+      {
+        $match: {
+          status: "approved",
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: "$userId",
+          totalSaved: { $sum: "$depositAmount" }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalSavers: { $sum: 1 },
+          totalSaved: { $sum: "$totalSaved" }
+        }
+      }
+    ]).toArray();
     
     // Calculate user tier based on total saved
     const getTier = (totalSaved) => {
@@ -190,8 +212,8 @@ export const getMonthlyLeaderboard = async (req, res) => {
     }
     
     // Get statistics
-    const totalSavers = leaderboard.length;
-    const totalSaved = leaderboard.reduce((sum, u) => sum + u.totalSaved, 0);
+    const totalSavers = statsResult[0]?.totalSavers || 0;
+    const totalSaved = statsResult[0]?.totalSaved || 0;
     const averageSaved = totalSavers > 0 ? totalSaved / totalSavers : 0;
     
     return res.status(200).json({
@@ -283,6 +305,27 @@ export const getAllTimeLeaderboard = async (req, res) => {
       },
       {
         $limit: 100
+      }
+    ]).toArray();
+
+    const statsResult = await depositsCollection.aggregate([
+      {
+        $match: {
+          status: "approved"
+        }
+      },
+      {
+        $group: {
+          _id: "$userId",
+          totalSaved: { $sum: "$depositAmount" }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalSavers: { $sum: 1 },
+          totalSaved: { $sum: "$totalSaved" }
+        }
       }
     ]).toArray();
     
@@ -404,8 +447,8 @@ export const getAllTimeLeaderboard = async (req, res) => {
     }
     
     // Get statistics
-    const totalSavers = leaderboard.length;
-    const totalSaved = leaderboard.reduce((sum, u) => sum + u.totalSaved, 0);
+    const totalSavers = statsResult[0]?.totalSavers || 0;
+    const totalSaved = statsResult[0]?.totalSaved || 0;
     const averageSaved = totalSavers > 0 ? totalSaved / totalSavers : 0;
     
     return res.status(200).json({
