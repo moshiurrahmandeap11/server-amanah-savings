@@ -914,6 +914,7 @@ export const getPublicCircles = async (req, res) => {
     const { page = 1, limit = 10, purpose } = req.query;
 
     const circlesCollection = db.collection("circles");
+    const joinRequestsCollection = db.collection("circleJoinRequests");
     
     const query = { 
       circleType: { $ne: "private" },
@@ -935,11 +936,29 @@ export const getPublicCircles = async (req, res) => {
       .toArray();
 
     const userId = req.user?._id;
+    const pendingRequestCircleIds = new Set();
+
+    if (userId) {
+      const pendingRequests = await joinRequestsCollection
+        .find({
+          userId: new ObjectId(userId),
+          status: "pending",
+        })
+        .project({ circleId: 1 })
+        .toArray();
+
+      pendingRequests.forEach((request) => {
+        if (request.circleId) {
+          pendingRequestCircleIds.add(request.circleId.toString());
+        }
+      });
+    }
 
     const formattedCircles = circles.map(circle => {
       const isMember = userId ? (circle.members || []).some(
         member => member.userId.toString() === String(userId)
       ) : false;
+      const isPending = pendingRequestCircleIds.has(circle._id.toString());
       
       return {
         _id: circle._id,
@@ -956,6 +975,7 @@ export const getPublicCircles = async (req, res) => {
         createdBy: circle.createdBy,
         createdAt: circle.createdAt,
         isMember,
+        isPending,
       };
     });
 
