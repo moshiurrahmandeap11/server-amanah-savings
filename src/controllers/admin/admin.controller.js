@@ -2615,6 +2615,7 @@ export const getAllTransactions = async (req, res) => {
           amount: w.withdrawalAmount, // ✅
           status: w.status,
           method: w.paymentMethod, // ✅
+          paymentMethod: w.paymentMethod,
           goalName: w.goalName,
           goalType: w.goalType,
           userId: w.userId,
@@ -2623,8 +2624,16 @@ export const getAllTransactions = async (req, res) => {
             `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
             "Unknown", // ✅
           userPhone: user?.phone,
+          phone: user?.phone,
+          reason: w.reason,
+          remarks: w.remarks,
+          paymentDetails: w.paymentDetails,
+          isReferralBonus: w.isReferralBonus,
+          isCircleWithdrawal: w.isCircleWithdrawal,
           createdAt: w.createdAt,
           updatedAt: w.updatedAt,
+          approvedAt: w.approvedAt,
+          processedAt: w.processedAt,
         });
       }
     }
