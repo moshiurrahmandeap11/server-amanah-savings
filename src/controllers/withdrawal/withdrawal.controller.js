@@ -346,7 +346,7 @@ export const getAllWithdrawals = async (req, res) => {
             "user.fullName": 1,
             "user.email": 1,
             "user.phone": 1,
-            "user.createdAt" : 1,
+            isReferralBonus: 1,
           },
         },
       ])
@@ -443,6 +443,14 @@ export const approveWithdrawal = async (req, res) => {
         },
       }
     );
+
+    // Skip goal update for referral bonus withdrawals (goalId is null)
+    if (!withdrawal.goalId || withdrawal.isReferralBonus) {
+      return res.status(200).json({
+        success: true,
+        message: "Withdrawal approved successfully",
+      });
+    }
 
     // Update goal's currentSaved and progress
     const goal = await goalsCollection.findOne({
@@ -609,6 +617,21 @@ export const completeWithdrawal = async (req, res) => {
         },
       }
     );
+
+    // For referral bonus withdrawals, update user's totalReferralBonus and totalWithdrawals
+    if (withdrawal.isReferralBonus) {
+      const usersCollection = db.collection("users");
+      await usersCollection.updateOne(
+        { _id: withdrawal.userId },
+        {
+          $inc: {
+            totalReferralBonus: -withdrawal.withdrawalAmount,
+            totalWithdrawals: withdrawal.withdrawalAmount,
+          },
+          $set: { updatedAt: new Date() },
+        }
+      );
+    }
 
     return res.status(200).json({
       success: true,

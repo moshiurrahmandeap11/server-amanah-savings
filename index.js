@@ -31,6 +31,7 @@ import notificationRoutes from "./src/routes/notification/notification.routes.js
 import helpRoutes from "./src/routes/help/help.routes.js";
 import contactRoutes from "./src/routes/contact/contact.routes.js";
 import adminRoutes from "./src/routes/admin/admin.routes.js";
+import balanceRoutes from "./src/routes/balance/balance.routes.js";
 import { getCmsContent, getPaymentInstructions } from "./src/controllers/admin/admin.controller.js";
 
 app.use(
@@ -72,6 +73,7 @@ app.use("/api/referrals", referralRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/help", helpRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/api/balance", balanceRoutes);
 app.get("/api/cms", getCmsContent);
 app.get("/api/payment-instructions", getPaymentInstructions);
 
