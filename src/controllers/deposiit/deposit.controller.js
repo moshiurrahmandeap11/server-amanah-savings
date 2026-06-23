@@ -188,6 +188,24 @@ export const createDeposit = async (req, res) => {
         });
       }
 
+      // Check if goal target is already reached
+      const currentSaved = Number(goal.currentSaved) || 0;
+      const targetAmount = Number(goal.targetAmount) || 0;
+      if (targetAmount > 0 && currentSaved >= targetAmount) {
+        return res.status(400).json({
+          success: false,
+          message: `Goal target of ৳${targetAmount.toLocaleString()} has already been reached. No more deposits are accepted.`,
+        });
+      }
+      if (targetAmount > 0 && currentSaved + depositAmountNum > targetAmount) {
+        const remaining = Math.max(0, targetAmount - currentSaved);
+        return res.status(400).json({
+          success: false,
+          message: `Deposit would exceed the goal target of ৳${targetAmount.toLocaleString()}. Current saved: ৳${currentSaved.toLocaleString()}. You can deposit maximum ৳${remaining.toLocaleString()}.`,
+          data: { targetAmount, currentSaved, remaining, requestedAmount: depositAmountNum },
+        });
+      }
+
       depositTarget = {
         targetType: "goal",
         goalId: goal._id,
