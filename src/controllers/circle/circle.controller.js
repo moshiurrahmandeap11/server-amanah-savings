@@ -1355,3 +1355,176 @@ function generateInviteCode() {
   }
   return result;
 }
+// Admin: Withdraw from circle pool
+export const withdrawFromCircle = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+    const { withdrawalAmount, paymentMethod, phoneNumber, bankName, accountNumber, accountHolderName } = req.body;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid circle ID",
+      });
+    }
+
+    if (!withdrawalAmount || withdrawalAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid withdrawal amount is required",
+      });
+    }
+
+    if (withdrawalAmount < 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Minimum withdrawal amount is ৳100",
+      });
+    }
+
+    if (!paymentMethod) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment method is required",
+      });
+    }
+
+    // Validate payment method specific fields
+    if (paymentMethod === "bkash" || paymentMethod === "nagad") {
+      if (!phoneNumber) {
+        return res.status(400).json({
+          success: false,
+          message: `${paymentMethod === "bkash" ? "bKash" : "Nagad"} number is required`,
+        });
+      }
+      const cleanedPhone = phoneNumber.replace(/\D/g, '');
+      const phoneRegex = /^(0?1[3-9]\d{8})$/;
+      if (!phoneRegex.test(cleanedPhone)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid phone number format. Must be 11 digits starting with 01 or 1",
+        });
+      }
+    }
+
+    if (paymentMethod === "bank") {
+      if (!bankName) {
+        return res.status(400).json({
+          success: false,
+          message: "Bank name is required",
+        });
+      }
+      if (!accountNumber) {
+        return res.status(400).json({
+          success: false,
+          message: "Account number is required",
+        });
+      }
+      if (!accountHolderName) {
+        return res.status(400).json({
+          success: false,
+          message: "Account holder name is required",
+        });
+      }
+    }
+
+    const circlesCollection = db.collection("circles");
+    const withdrawalsCollection = db.collection("withdrawals");
+
+    const circle = await circlesCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!circle) {
+      return res.status(404).json({
+        success: false,
+        message: "Circle not found",
+      });
+    }
+
+    // Check if user is admin of this circle
+    const userMember = circle.members.find(
+      member => member.userId.toString() === userId
+    );
+
+    if (!userMember || userMember.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only circle admin can withdraw from the pool",
+      });
+    }
+
+    const totalPool = Number(circle.totalPool) || 0;
+    const withdrawalAmountNum = parseFloat(withdrawalAmount);
+
+    if (withdrawalAmountNum > totalPool) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient pool balance. Available: ৳${totalPool.toLocaleString()}, Requested: ৳${withdrawalAmountNum.toLocaleString()}`,
+        data: { availableBalance: totalPool, requestedAmount: withdrawalAmountNum },
+      });
+    }
+
+    // Check for pending circle withdrawal
+    const existingPending = await withdrawalsCollection.findOne({
+      circleId: new ObjectId(id),
+      status: "pending",
+      isCircleWithdrawal: true,
+    });
+
+    if (existingPending) {
+      return res.status(400).json({
+        success: false,
+        message: "You already have a pending withdrawal request for this circle",
+      });
+    }
+
+    // Create withdrawal object
+    const newWithdrawal = {
+      userId: new ObjectId(userId),
+      circleId: new ObjectId(id),
+      circleName: circle.circleName,
+      goalId: null,
+      goalName: circle.circleName,
+      goalType: "circle",
+      withdrawalAmount: withdrawalAmountNum,
+      reason: "Circle pool withdrawal by admin",
+      paymentMethod,
+      paymentDetails: {
+        ...(paymentMethod === "bkash" || paymentMethod === "nagad" ? { phoneNumber } : {}),
+        ...(paymentMethod === "bank" ? {
+          bankName,
+          accountNumber,
+          accountHolderName,
+        } : {}),
+      },
+      status: "pending",
+      remarks: null,
+      approvedBy: null,
+      approvedAt: null,
+      processedAt: null,
+      isCircleWithdrawal: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const result = await withdrawalsCollection.insertOne(newWithdrawal);
+    const withdrawal = { ...newWithdrawal, _id: result.insertedId };
+
+    return res.status(201).json({
+      success: true,
+      message: "Circle withdrawal request submitted successfully. Admin will review within 5-7 working days.",
+      data: {
+        withdrawal,
+        availablePool: totalPool - withdrawalAmountNum,
+      },
+    });
+  } catch (error) {
+    console.error("Circle withdrawal error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to submit circle withdrawal request",
+    });
+  }
+};

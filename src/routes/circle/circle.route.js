@@ -11,6 +11,7 @@ import {
   joinCircleByInvite,
   deleteCircle,
   updateCircle,
+  withdrawFromCircle,
 } from "../../controllers/circle/circle.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
 import jwt from "jsonwebtoken";
@@ -49,6 +50,7 @@ router.post("/:id/invite", verifyToken, generateInviteLink);        // Generate 
 router.post("/join/:inviteCode", verifyToken, joinCircleByInvite); // Join private circle by invite
 
 router.patch("/:id", verifyToken, updateCircle);                    // Update circle (admin only)
-router.delete("/:id", verifyToken, deleteCircle);                   
+router.delete("/:id", verifyToken, deleteCircle);                   // Delete circle (admin only)
+router.post("/:id/withdraw", verifyToken, withdrawFromCircle);      // Withdraw from circle pool (admin only)
 
 export default router;
