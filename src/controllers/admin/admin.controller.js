@@ -2368,6 +2368,74 @@ export const getCmsContent = async (req, res) => {
             ],
           },
         ],
+        comparisonGroups: [
+          {
+            label: "Savings Goals",
+            icon: "Wallet",
+            rows: [
+              ["Active savings goals", "Up to 3", "Up to 6", "Unlimited", "Unlimited"],
+              ["Min monthly deposit", "৳500", "৳1,000", "৳2,000", "৳5,000"],
+              ["Max single deposit", "৳10,000", "৳25,000", "৳1,00,000", "৳5,00,000"],
+              ["Goal lock period", "3-12 months", "3-24 months", "3-60 months", "Custom"],
+            ],
+          },
+          {
+            label: "Payments",
+            icon: "CreditCard",
+            rows: [
+              ["bKash & Nagad", true, true, true, true],
+              ["Bank Transfer", false, true, true, true],
+              ["Withdrawal time", "7-10 days", "5-7 days", "3 days", "24 hours"],
+              ["Early withdrawal", false, "With fee", "With fee", "Free once/yr"],
+            ],
+          },
+          {
+            label: "Community Circles",
+            icon: "Users",
+            rows: [
+              ["Join circles", false, "1 circle", "3 circles", "10 circles"],
+              ["Create circles", false, false, "1 circle", "3 circles"],
+              ["Circle admin tools", false, false, true, true],
+            ],
+          },
+          {
+            label: "AI & Insights",
+            icon: "Bot",
+            rows: [
+              ["Savings insights report", false, "Monthly", "Weekly", "Daily"],
+              ["AI financial assistant", false, false, true, "Advanced+"],
+              ["Goal projections", "Basic", "Standard", "Advanced", "Advanced+"],
+            ],
+          },
+          {
+            label: "Gamification",
+            icon: "Trophy",
+            rows: [
+              ["Streak tracking", true, true, true, true],
+              ["Achievement badges", "5 badges", "20 badges", "All badges", "All + exclusive"],
+              ["Community leaderboard", false, "View only", "Full access", "Featured profile"],
+              ["Savings challenges", false, true, true, true],
+            ],
+          },
+          {
+            label: "Security & Support",
+            icon: "ShieldCheck",
+            rows: [
+              ["KYC verification", "Standard", "Standard", "Enhanced", "Premium"],
+              ["2-factor auth", true, true, true, true],
+              ["Customer support", "Email", "Email + Chat", "Priority chat", "Dedicated manager"],
+              ["Account manager", false, false, false, true],
+            ],
+          },
+          {
+            label: "Islamic Mode",
+            icon: "Moon",
+            rows: [
+              ["Riba-free savings", true, true, true, true],
+              ["Halal goal categories", true, true, true, true],
+            ],
+          },
+        ],
         faq: [
           {
             question: "What is Amanah Savings?",
