@@ -265,6 +265,27 @@ export const createDeposit = async (req, res) => {
         message: `Minimum deposit for this circle is ৳${Number(circle.minDeposit).toLocaleString()}`,
       });
     }
+
+    // ===== CIRCLE TARGET REACHED CHECK =====
+    if (isCircleDeposit && circle) {
+      const currentPool = Number(circle.totalPool) || 0;
+      const targetAmount = Number(circle.targetAmount) || 0;
+      if (targetAmount > 0 && currentPool >= targetAmount) {
+        return res.status(400).json({
+          success: false,
+          message: `This circle has already reached its target of ৳${targetAmount.toLocaleString()}. No more deposits are accepted.`,
+        });
+      }
+      if (targetAmount > 0 && currentPool + depositAmountNum > targetAmount) {
+        const remaining = Math.max(0, targetAmount - currentPool);
+        return res.status(400).json({
+          success: false,
+          message: `Deposit would exceed the circle target of ৳${targetAmount.toLocaleString()}. Current pool: ৳${currentPool.toLocaleString()}. You can deposit maximum ৳${remaining.toLocaleString()}.`,
+          data: { targetAmount, currentPool, remaining, requestedAmount: depositAmountNum },
+        });
+      }
+    }
+    // ===== END CIRCLE TARGET REACHED CHECK =====
     
     // Create deposit object
     const newDeposit = {

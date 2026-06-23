@@ -241,11 +241,14 @@ export const createReferralBonusWithdrawal = async (req, res) => {
           message: `${paymentMethod === "bkash" ? "bKash" : "Nagad"} number is required`,
         });
       }
-      const phoneRegex = /^1[3-9]\d{8}$/;
-      if (!phoneRegex.test(phoneNumber)) {
+      // Validate phone number format
+      // Accepts: 01712345678, 1712345678, 01609836406, 1609836406 etc.
+      const cleanedPhone = phoneNumber.replace(/\D/g, '');
+      const phoneRegex = /^(0?1[3-9]\d{8})$/;
+      if (!phoneRegex.test(cleanedPhone)) {
         return res.status(400).json({
           success: false,
-          message: "Invalid phone number format. Must be 11 digits starting with 1",
+          message: "Invalid phone number format. Must be 11 digits starting with 01 or 1 (e.g., 01712345678 or 1712345678)",
         });
       }
     }
