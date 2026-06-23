@@ -177,7 +177,7 @@ export const generateWithdrawalNotification = async (withdrawal, status = 'appro
       badge = "Approved";
     } else if (status === 'rejected') {
       title = "Withdrawal Rejected ❌";
-      message = `Your withdrawal of <strong>৳${withdrawal.withdrawalAmount.toLocaleString()}</strong> from <strong>${withdrawal.goalName}</strong> was rejected. Please contact support.`;
+      message = `Your withdrawal of <strong>৳${withdrawal.withdrawalAmount.toLocaleString()}</strong> from <strong>${withdrawal.goalName}</strong> was rejected. <strong>Reason:</strong> ${withdrawal.remarks || "No reason provided"}`;
       icon = "❌";
       badge = "Rejected";
     } else {

@@ -1,6 +1,7 @@
 // controllers/withdrawal/withdrawal.controller.js
 import { db } from "../../database/db.js";
 import { ObjectId } from "mongodb";
+import { generateWithdrawalNotification } from "../notification/notification.controller.js";
 
 // Create withdrawal request
 export const createWithdrawal = async (req, res) => {
@@ -558,6 +559,16 @@ export const rejectWithdrawal = async (req, res) => {
         },
       }
     );
+
+    // Send notification to user about rejection with reason
+    try {
+      await generateWithdrawalNotification(
+        { ...withdrawal, remarks },
+        "rejected"
+      );
+    } catch (notifError) {
+      console.error("Failed to send rejection notification:", notifError);
+    }
 
     return res.status(200).json({
       success: true,
