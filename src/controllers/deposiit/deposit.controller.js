@@ -87,14 +87,16 @@ export const createDeposit = async (req, res) => {
       });
     }
 
-    if (!depositAmount || depositAmount <= 0) {
+    const depositAmountNum = Number(depositAmount);
+
+    if (!Number.isFinite(depositAmountNum) || depositAmountNum <= 0) {
       return res.status(400).json({
         success: false,
         message: "Valid deposit amount is required",
       });
     }
 
-    if (depositAmount < 100) {
+    if (depositAmountNum < 100) {
       return res.status(400).json({
         success: false,
         message: "Minimum deposit amount is ৳100",
@@ -213,9 +215,6 @@ export const createDeposit = async (req, res) => {
         goalType: goal.goalType,
       };
     }
-
-    // Convert to number
-    const depositAmountNum = parseFloat(depositAmount);
 
     // ===== PLAN LIMIT VALIDATION =====
     // Check user's plan and enforce monthly deposit limit
