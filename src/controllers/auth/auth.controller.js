@@ -47,6 +47,10 @@ const sanitizeUserResponse = (user) => {
     email: safeString(user.email),
     selectedPlan: safeString(user.selectedPlan) || "bronze",
     customPlanName: safeString(user.customPlanName) || null,
+    billingCycle: safeString(user.billingCycle) || "monthly",
+    planFee: safeNumber(user.planFee),
+    planActive: safeBool(user.planActive),
+    planExpiry: safeDate(user.planExpiry) || null,
     kyc: {
       nidNumber: safeString(user.kyc?.nidNumber) || null,
       nidFrontImage: safeString(user.kyc?.nidFrontImage) || null,
@@ -178,6 +182,8 @@ export const register = async (req, res) => {
       // Step 6 - Plan & Goal
       selectedPlan,
       customPlanName,
+      billingCycle,
+      planFee,
       goalType,
       customGoalName,
       targetAmount,
@@ -441,6 +447,12 @@ export const register = async (req, res) => {
       // Plan & Goal
       selectedPlan,
       customPlanName: customPlanName || null,
+      billingCycle: billingCycle || "monthly",
+      planFee: planFee ? parseInt(planFee) : 0,
+      planActive: true,
+      planExpiry: billingCycle === "yearly" 
+        ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) 
+        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       goal: {
         type: goalType || null,
         customGoalName: customGoalName || null,
@@ -584,6 +596,10 @@ export const register = async (req, res) => {
           email: user.email,
           selectedPlan: user.selectedPlan,
           customPlanName: user.customPlanName || null,
+          billingCycle: user.billingCycle || "monthly",
+          planFee: user.planFee || 0,
+          planActive: user.planActive || false,
+          planExpiry: user.planExpiry || null,
           kyc: {
           nidNumber: user.kyc?.nidNumber || null,
           nidFrontImage: user.kyc?.nidFrontImage || null,

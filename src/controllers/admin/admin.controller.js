@@ -2314,6 +2314,8 @@ export const getCmsContent = async (req, res) => {
             name: "Bronze",
             min: 500,
             max: 4999,
+            monthlyFee: 0,
+            yearlyFee: 0,
             color: "#cd7f32",
             features: [
               "Basic savings goals",
@@ -2325,6 +2327,8 @@ export const getCmsContent = async (req, res) => {
             name: "Silver",
             min: 5000,
             max: 14999,
+            monthlyFee: 199,
+            yearlyFee: 159,
             color: "#c0c0c0",
             features: [
               "Multiple goals",
@@ -2337,6 +2341,8 @@ export const getCmsContent = async (req, res) => {
             name: "Gold",
             min: 15000,
             max: 49999,
+            monthlyFee: 499,
+            yearlyFee: 399,
             color: "#ffd700",
             features: [
               "Unlimited goals",
@@ -2350,6 +2356,8 @@ export const getCmsContent = async (req, res) => {
             name: "Platinum",
             min: 50000,
             max: null,
+            monthlyFee: 999,
+            yearlyFee: 799,
             color: "#e5e4e2",
             features: [
               "Everything in Gold",
