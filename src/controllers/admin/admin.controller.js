@@ -2428,9 +2428,17 @@ export const updateCmsContent = async (req, res) => {
   try {
     const updates = req.body;
     const cmsCollection = db.collection("cms_content");
+    
+    // Ensure key field is preserved and remove any MongoDB reserved fields
+    const cleanUpdates = { ...updates };
+    delete cleanUpdates._id; // Remove _id if present to avoid MongoDB error
+    
+    // Ensure key is always set
+    cleanUpdates.key = "cms";
+    
     await cmsCollection.updateOne(
       { key: "cms" },
-      { $set: { ...updates, updatedAt: new Date() } },
+      { $set: { ...cleanUpdates, updatedAt: new Date() } },
       { upsert: true },
     );
     return res

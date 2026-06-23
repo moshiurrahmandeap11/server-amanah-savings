@@ -199,6 +199,66 @@ export const createDeposit = async (req, res) => {
     // Convert to number
     const depositAmountNum = parseFloat(depositAmount);
 
+    // ===== PLAN LIMIT VALIDATION =====
+    // Check user's plan and enforce monthly deposit limit
+    const userPlan = user.selectedPlan || "bronze";
+    const userBillingCycle = user.billingCycle || "monthly";
+    const userPlanFee = Number(user.planFee) || 0;
+    
+    // Get plan limits from CMS (fallback to hardcoded defaults)
+    const cmsCollection = db.collection("cms_content");
+    const cms = await cmsCollection.findOne({ key: "cms" });
+    const cmsPlans = cms?.plans || [];
+    const planConfig = cmsPlans.find(p => 
+      (p.name || "").toLowerCase() === userPlan.toLowerCase()
+    );
+    
+    // Determine max deposit allowed based on plan
+    let maxDepositAllowed = 10000; // Default Bronze max
+    if (planConfig?.max) {
+      maxDepositAllowed = Number(planConfig.max);
+    } else {
+      // Fallback hardcoded limits
+      const planLimits = { bronze: 10000, silver: 25000, gold: 100000, platinum: 500000 };
+      maxDepositAllowed = planLimits[userPlan.toLowerCase()] || 10000;
+    }
+    
+    // Check if this deposit would exceed the plan's monthly limit
+    // Get total deposits this month
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    
+    const monthlyDeposits = await depositsCollection
+      .find({
+        userId: new ObjectId(userId),
+        status: { $in: ["pending", "approved"] },
+        createdAt: { $gte: startOfMonth, $lt: endOfMonth },
+      })
+      .toArray();
+    
+    const totalMonthlyDeposited = monthlyDeposits.reduce(
+      (sum, d) => sum + Number(d.depositAmount || 0), 
+      0
+    );
+    
+    // If adding this deposit would exceed the plan limit, reject it
+    if (totalMonthlyDeposited + depositAmountNum > maxDepositAllowed) {
+      const remaining = Math.max(0, maxDepositAllowed - totalMonthlyDeposited);
+      return res.status(400).json({
+        success: false,
+        message: `Plan limit exceeded! Your ${userPlan} plan allows maximum ৳${maxDepositAllowed.toLocaleString()} per month. You have already deposited ৳${totalMonthlyDeposited.toLocaleString()} this month. Remaining limit: ৳${remaining.toLocaleString()}.`,
+        data: {
+          plan: userPlan,
+          planLimit: maxDepositAllowed,
+          depositedThisMonth: totalMonthlyDeposited,
+          remainingLimit: remaining,
+          requestedAmount: depositAmountNum,
+        },
+      });
+    }
+    // ===== END PLAN LIMIT VALIDATION =====
+
     if (isCircleDeposit && circle?.minDeposit && depositAmountNum < Number(circle.minDeposit)) {
       return res.status(400).json({
         success: false,
