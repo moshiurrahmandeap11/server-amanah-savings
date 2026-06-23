@@ -10,7 +10,10 @@ const uri = process.env.MONGO_URI;
 const connectDB = async() => {
     try {
         if(!client) {
-            client = new MongoClient(uri);
+            client = new MongoClient(uri, {
+                retryWrites: false,
+                w: "majority",
+            });
             await client.connect();
             dbInstance = client.db("amanah-savings")
             console.log("MongoDB connected to amanah savings");

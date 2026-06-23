@@ -142,95 +142,85 @@ export const goalToGoalTransfer = async (req, res) => {
       });
     }
 
-    // Start a session for transaction
-    const session = db.client.startSession();
-    
+    // Perform updates without transaction (MongoDB deployment doesn't support retryable writes)
     try {
-      await session.withTransaction(async () => {
-        // Update source goal (decrease)
-        const newFromCurrentSaved = fromGoal.currentSaved - amountNum;
-        const newFromProgress = Math.max(0, Math.min(Math.round((newFromCurrentSaved / fromGoal.targetAmount) * 100), 100));
-        
-        await goalsCollection.updateOne(
-          { _id: new ObjectId(fromGoalId) },
-          {
-            $set: {
-              currentSaved: newFromCurrentSaved,
-              progress: newFromProgress,
-              updatedAt: new Date(),
-            }
-          },
-          { session }
-        );
-
-        // Update destination goal (increase)
-        const newToCurrentSaved = toGoal.currentSaved + amountNum;
-        const newToProgress = Math.min(Math.round((newToCurrentSaved / toGoal.targetAmount) * 100), 100);
-        
-        const toGoalUpdateData = {
-          currentSaved: newToCurrentSaved,
-          progress: newToProgress,
-          updatedAt: new Date(),
-        };
-        
-        if (newToCurrentSaved >= toGoal.targetAmount) {
-          toGoalUpdateData.status = "completed";
-          toGoalUpdateData.progress = 100;
-        }
-        
-        await goalsCollection.updateOne(
-          { _id: new ObjectId(toGoalId) },
-          { $set: toGoalUpdateData },
-          { session }
-        );
-
-        // Update user's goals array for source goal
-        await usersCollection.updateOne(
-          { _id: new ObjectId(userId), "goals.goalId": new ObjectId(fromGoalId) },
-          {
-            $set: {
-              "goals.$.currentSaved": newFromCurrentSaved,
-              "goals.$.progress": newFromProgress,
-              "goals.$.updatedAt": new Date(),
-            }
-          },
-          { session }
-        );
-
-        // Update user's goals array for destination goal
-        await usersCollection.updateOne(
-          { _id: new ObjectId(userId), "goals.goalId": new ObjectId(toGoalId) },
-          {
-            $set: {
-              "goals.$.currentSaved": newToCurrentSaved,
-              "goals.$.progress": newToProgress,
-              "goals.$.status": newToCurrentSaved >= toGoal.targetAmount ? "completed" : "active",
-              "goals.$.updatedAt": new Date(),
-            }
-          },
-          { session }
-        );
-
-        // Create transfer record
-        const transfer = {
-          userId: new ObjectId(userId),
-          type: "goal_to_goal",
-          fromGoalId: new ObjectId(fromGoalId),
-          toGoalId: new ObjectId(toGoalId),
-          fromGoalName: fromGoal.goalName,
-          toGoalName: toGoal.goalName,
-          amount: amountNum,
-          note: note || null,
-          status: "completed",
-          referenceNumber: `TRF-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-        
-        await transfersCollection.insertOne(transfer, { session });
-      });
+      // Update source goal (decrease)
+      const newFromCurrentSaved = fromGoal.currentSaved - amountNum;
+      const newFromProgress = Math.max(0, Math.min(Math.round((newFromCurrentSaved / fromGoal.targetAmount) * 100), 100));
       
-      await session.endSession();
+      await goalsCollection.updateOne(
+        { _id: new ObjectId(fromGoalId) },
+        {
+          $set: {
+            currentSaved: newFromCurrentSaved,
+            progress: newFromProgress,
+            updatedAt: new Date(),
+          }
+        }
+      );
+
+      // Update destination goal (increase)
+      const newToCurrentSaved = toGoal.currentSaved + amountNum;
+      const newToProgress = Math.min(Math.round((newToCurrentSaved / toGoal.targetAmount) * 100), 100);
+      
+      const toGoalUpdateData = {
+        currentSaved: newToCurrentSaved,
+        progress: newToProgress,
+        updatedAt: new Date(),
+      };
+      
+      if (newToCurrentSaved >= toGoal.targetAmount) {
+        toGoalUpdateData.status = "completed";
+        toGoalUpdateData.progress = 100;
+      }
+      
+      await goalsCollection.updateOne(
+        { _id: new ObjectId(toGoalId) },
+        { $set: toGoalUpdateData }
+      );
+
+      // Update user's goals array for source goal
+      await usersCollection.updateOne(
+        { _id: new ObjectId(userId), "goals.goalId": new ObjectId(fromGoalId) },
+        {
+          $set: {
+            "goals.$.currentSaved": newFromCurrentSaved,
+            "goals.$.progress": newFromProgress,
+            "goals.$.updatedAt": new Date(),
+          }
+        }
+      );
+
+      // Update user's goals array for destination goal
+      await usersCollection.updateOne(
+        { _id: new ObjectId(userId), "goals.goalId": new ObjectId(toGoalId) },
+        {
+          $set: {
+            "goals.$.currentSaved": newToCurrentSaved,
+            "goals.$.progress": newToProgress,
+            "goals.$.status": newToCurrentSaved >= toGoal.targetAmount ? "completed" : "active",
+            "goals.$.updatedAt": new Date(),
+          }
+        }
+      );
+
+      // Create transfer record
+      const transfer = {
+        userId: new ObjectId(userId),
+        type: "goal_to_goal",
+        fromGoalId: new ObjectId(fromGoalId),
+        toGoalId: new ObjectId(toGoalId),
+        fromGoalName: fromGoal.goalName,
+        toGoalName: toGoal.goalName,
+        amount: amountNum,
+        note: note || null,
+        status: "completed",
+        referenceNumber: `TRF-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      
+      await transfersCollection.insertOne(transfer);
 
       return res.status(200).json({
         success: true,
@@ -239,13 +229,16 @@ export const goalToGoalTransfer = async (req, res) => {
           fromGoal: fromGoal.goalName,
           toGoal: toGoal.goalName,
           amount: amountNum,
-          newFromBalance: fromGoal.currentSaved - amountNum,
-          newToBalance: toGoal.currentSaved + amountNum,
+          newFromBalance: newFromCurrentSaved,
+          newToBalance: newToCurrentSaved,
         },
       });
     } catch (error) {
-      await session.endSession();
-      throw error;
+      console.error("Goal to goal transfer error:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to complete transfer",
+      });
     }
   } catch (error) {
     console.error("Goal to goal transfer error:", error);
@@ -430,99 +423,89 @@ export const userToUserTransfer = async (req, res) => {
       );
     }
 
-    // Start a session for transaction
-    const session = db.client.startSession();
-    
+    // Perform updates without transaction (MongoDB deployment doesn't support retryable writes)
     try {
-      await session.withTransaction(async () => {
-        // Update sender's goal (decrease)
-        const newFromCurrentSaved = fromGoal.currentSaved - amountNum;
-        const newFromProgress = Math.max(0, Math.min(Math.round((newFromCurrentSaved / fromGoal.targetAmount) * 100), 100));
-        
-        await goalsCollection.updateOne(
-          { _id: new ObjectId(fromGoalId) },
-          {
-            $set: {
-              currentSaved: newFromCurrentSaved,
-              progress: newFromProgress,
-              updatedAt: new Date(),
-            }
-          },
-          { session }
-        );
-
-        // Update recipient's goal (increase)
-        const newToCurrentSaved = (toGoal.currentSaved || 0) + amountNum;
-        const newToProgress = Math.min(Math.round((newToCurrentSaved / toGoal.targetAmount) * 100), 100);
-        
-        const toGoalUpdateData = {
-          currentSaved: newToCurrentSaved,
-          progress: newToProgress,
-          updatedAt: new Date(),
-        };
-        
-        if (newToCurrentSaved >= toGoal.targetAmount) {
-          toGoalUpdateData.status = "completed";
-          toGoalUpdateData.progress = 100;
-        }
-        
-        await goalsCollection.updateOne(
-          { _id: toGoal._id },
-          { $set: toGoalUpdateData },
-          { session }
-        );
-
-        // Update sender's user goals array
-        await usersCollection.updateOne(
-          { _id: new ObjectId(fromUserId), "goals.goalId": new ObjectId(fromGoalId) },
-          {
-            $set: {
-              "goals.$.currentSaved": newFromCurrentSaved,
-              "goals.$.progress": newFromProgress,
-              "goals.$.updatedAt": new Date(),
-            }
-          },
-          { session }
-        );
-
-        // Update recipient's user goals array
-        await usersCollection.updateOne(
-          { _id: toUser._id, "goals.goalId": toGoal._id },
-          {
-            $set: {
-              "goals.$.currentSaved": newToCurrentSaved,
-              "goals.$.progress": newToProgress,
-              "goals.$.status": newToCurrentSaved >= toGoal.targetAmount ? "completed" : "active",
-              "goals.$.updatedAt": new Date(),
-            }
-          },
-          { session }
-        );
-
-        // Create transfer record
-        const transfer = {
-          fromUserId: new ObjectId(fromUserId),
-          toUserId: toUser._id,
-          type: "user_to_user",
-          fromGoalId: new ObjectId(fromGoalId),
-          toGoalId: toGoal._id,
-          fromGoalName: fromGoal.goalName,
-          toGoalName: toGoal.goalName,
-          fromUserName: fromUser.name,
-          toUserName: toUser.name,
-          toUserPhone: toUser.phone,
-          amount: amountNum,
-          note: note || null,
-          status: "completed",
-          referenceNumber: `TRF-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-        
-        await transfersCollection.insertOne(transfer, { session });
-      });
+      // Update sender's goal (decrease)
+      const newFromCurrentSaved = fromGoal.currentSaved - amountNum;
+      const newFromProgress = Math.max(0, Math.min(Math.round((newFromCurrentSaved / fromGoal.targetAmount) * 100), 100));
       
-      await session.endSession();
+      await goalsCollection.updateOne(
+        { _id: new ObjectId(fromGoalId) },
+        {
+          $set: {
+            currentSaved: newFromCurrentSaved,
+            progress: newFromProgress,
+            updatedAt: new Date(),
+          }
+        }
+      );
+
+      // Update recipient's goal (increase)
+      const newToCurrentSaved = (toGoal.currentSaved || 0) + amountNum;
+      const newToProgress = Math.min(Math.round((newToCurrentSaved / toGoal.targetAmount) * 100), 100);
+      
+      const toGoalUpdateData = {
+        currentSaved: newToCurrentSaved,
+        progress: newToProgress,
+        updatedAt: new Date(),
+      };
+      
+      if (newToCurrentSaved >= toGoal.targetAmount) {
+        toGoalUpdateData.status = "completed";
+        toGoalUpdateData.progress = 100;
+      }
+      
+      await goalsCollection.updateOne(
+        { _id: toGoal._id },
+        { $set: toGoalUpdateData }
+      );
+
+      // Update sender's user goals array
+      await usersCollection.updateOne(
+        { _id: new ObjectId(fromUserId), "goals.goalId": new ObjectId(fromGoalId) },
+        {
+          $set: {
+            "goals.$.currentSaved": newFromCurrentSaved,
+            "goals.$.progress": newFromProgress,
+            "goals.$.updatedAt": new Date(),
+          }
+        }
+      );
+
+      // Update recipient's user goals array
+      await usersCollection.updateOne(
+        { _id: toUser._id, "goals.goalId": toGoal._id },
+        {
+          $set: {
+            "goals.$.currentSaved": newToCurrentSaved,
+            "goals.$.progress": newToProgress,
+            "goals.$.status": newToCurrentSaved >= toGoal.targetAmount ? "completed" : "active",
+            "goals.$.updatedAt": new Date(),
+          }
+        }
+      );
+
+      // Create transfer record
+      const transfer = {
+        fromUserId: new ObjectId(fromUserId),
+        toUserId: toUser._id,
+        type: "user_to_user",
+        fromGoalId: new ObjectId(fromGoalId),
+        toGoalId: toGoal._id,
+        fromGoalName: fromGoal.goalName,
+        toGoalName: toGoal.goalName,
+        fromUserName: fromUser.name,
+        toUserName: toUser.name,
+        toUserPhone: toUser.phone,
+        amount: amountNum,
+        note: note || null,
+        status: "completed",
+        referenceNumber: `TRF-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      
+      await transfersCollection.insertOne(transfer);
 
       return res.status(200).json({
         success: true,
@@ -531,12 +514,15 @@ export const userToUserTransfer = async (req, res) => {
           toUser: toUser.name,
           toUserPhone: toUser.phone,
           amount: amountNum,
-          newBalance: fromGoal.currentSaved - amountNum,
+          newBalance: newFromCurrentSaved,
         },
       });
     } catch (error) {
-      await session.endSession();
-      throw error;
+      console.error("User to user transfer error:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to complete transfer",
+      });
     }
   } catch (error) {
     console.error("User to user transfer error:", error);
