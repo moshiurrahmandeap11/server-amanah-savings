@@ -198,6 +198,7 @@ export const generateWithdrawalNotification = async (withdrawal, status = 'appro
         amount: withdrawal.withdrawalAmount,
         goalName: withdrawal.goalName,
         status,
+        remarks: withdrawal.remarks || null,
       },
       read: false,
       createdAt: new Date(),
