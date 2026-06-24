@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb";
 import { db } from "../../database/db.js";
+import { clearMaintenanceCache, getMaintenanceState } from "../../utils/maintenanceMode.js";
 
 // ==================== GET ALL USERS (ADMIN) ====================
 export const getAllUsers = async (req, res) => {
@@ -2294,6 +2295,11 @@ export const updatePlatformSettings = async (req, res) => {
       { $set: { ...updates, payments: nextPayments, updatedAt: new Date() } },
       { upsert: true },
     );
+
+    if (updates.maintenance) {
+      clearMaintenanceCache();
+    }
+
     return res
       .status(200)
       .json({ success: true, message: "Settings updated successfully" });
@@ -2328,6 +2334,26 @@ export const getPaymentInstructions = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch payment instructions",
+    });
+  }
+};
+
+export const getPublicSystemStatus = async (req, res) => {
+  try {
+    const maintenance = await getMaintenanceState();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        maintenanceMode: maintenance.mode,
+        maintenanceMessage: maintenance.message,
+      },
+    });
+  } catch (error) {
+    console.error("Get system status error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch system status",
     });
   }
 };

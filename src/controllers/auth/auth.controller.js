@@ -7,6 +7,7 @@ import { ObjectId } from "mongodb";
 
 import { db } from "../../database/db.js";
 import { deleteFromCloudinary } from "../../middlewares/upload.js";
+import { getMaintenanceState } from "../../utils/maintenanceMode.js";
 
 // Helper function to generate JWT
 const generateToken = (user) => {
@@ -368,6 +369,16 @@ export const login = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "Account is suspended. Please contact support.",
+      });
+    }
+
+    const maintenance = await getMaintenanceState();
+    const userRole = user.role || "user";
+    if (maintenance.mode && userRole !== "admin") {
+      return res.status(503).json({
+        success: false,
+        maintenance: true,
+        message: maintenance.message,
       });
     }
 

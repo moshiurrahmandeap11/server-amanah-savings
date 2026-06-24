@@ -455,7 +455,7 @@ export const getDepositById = async (req, res) => {
 // Admin: Get all deposits (with aggregation for goal info)
 export const getAllDeposits = async (req, res) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
+    const { status, category, page = 1, limit = 20 } = req.query;
 
     const depositsCollection = db.collection("deposits");
 
@@ -464,6 +464,16 @@ export const getAllDeposits = async (req, res) => {
     const query = {};
     if (status && status !== "all") {
       query.status = status;
+    }
+
+    if (category === "referral") {
+      query.$or = [
+        { isBonus: true },
+        { bonusType: "referral" },
+        { paymentMethod: "referral" },
+        { goalType: "bonus" },
+        { goalName: { $regex: /^referral bonus$/i } },
+      ];
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -517,6 +527,7 @@ export const getAllDeposits = async (req, res) => {
 
     // Get statistics
     const statistics = await depositsCollection.aggregate([
+      { $match: query },
       {
         $group: {
           _id: "$status",

@@ -1,6 +1,7 @@
 import planUpgradeRoutes from "./src/routes/plan/plan.routes.js";import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import jwt from "jsonwebtoken";
 import { createServer } from "http";
 import { initSocketIO } from "./src/socket/socket.js";
 
@@ -32,7 +33,8 @@ import helpRoutes from "./src/routes/help/help.routes.js";
 import contactRoutes from "./src/routes/contact/contact.routes.js";
 import adminRoutes from "./src/routes/admin/admin.routes.js";
 import balanceRoutes from "./src/routes/balance/balance.routes.js";
-import { getCmsContent, getPaymentInstructions } from "./src/controllers/admin/admin.controller.js";
+import { getCmsContent, getPaymentInstructions, getPublicSystemStatus } from "./src/controllers/admin/admin.controller.js";
+import { getMaintenanceState } from "./src/utils/maintenanceMode.js";
 
 app.use(
   cors({
@@ -52,6 +54,47 @@ app.use(
 // middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const isAdminToken = (req) => {
+  try {
+    const authHeader = req.headers.authorization || "";
+    if (!authHeader.startsWith("Bearer ")) {
+      return false;
+    }
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return decoded?.role === "admin";
+  } catch (_error) {
+    return false;
+  }
+};
+
+app.use(async (req, res, next) => {
+  try {
+    const maintenance = await getMaintenanceState();
+    if (!maintenance.mode) {
+      return next();
+    }
+
+    const path = req.path;
+    const isAdminRoute = path.startsWith("/api/admin");
+    const isStatusRoute = path === "/api/system/status";
+    const isAdminLoginRoute = path === "/api/users/login";
+
+    if (isAdminRoute || isStatusRoute || isAdminLoginRoute || isAdminToken(req)) {
+      return next();
+    }
+
+    return res.status(503).json({
+      success: false,
+      maintenance: true,
+      message: maintenance.message,
+    });
+  } catch (error) {
+    console.error("Maintenance middleware error:", error);
+    return next();
+  }
+});
 
 // connect to database FIRST before loading routes
 await connectDB();
@@ -77,6 +120,7 @@ app.use("/api/balance", balanceRoutes);
 app.use("/api/plan-upgrades", planUpgradeRoutes);
 app.get("/api/cms", getCmsContent);
 app.get("/api/payment-instructions", getPaymentInstructions);
+app.get("/api/system/status", getPublicSystemStatus);
 
 app.use("/api/admin", adminRoutes);
 
