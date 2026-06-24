@@ -115,9 +115,10 @@ export const getUserById = async (req, res) => {
       });
     }
 
+    const userObjectId = new ObjectId(id);
     const usersCollection = db.collection("users");
     const user = await usersCollection.findOne(
-      { _id: new ObjectId(id) },
+      { _id: userObjectId },
       { projection: { password: 0, pin: 0 } },
     );
     if (!user) {
@@ -127,45 +128,75 @@ export const getUserById = async (req, res) => {
         .json({ success: false, message: "User not found" });
     }
 
+    const userIdMatch = { $or: [{ userId: userObjectId }, { userId: id }] };
+
     const deposits = await db
       .collection("deposits")
-      .find({ userId: new ObjectId(id) })
+      .find(userIdMatch)
       .sort({ createdAt: -1 })
       .limit(10)
       .toArray();
 
     const withdrawals = await db
       .collection("withdrawals")
-      .find({ userId: new ObjectId(id) })
+      .find(userIdMatch)
       .sort({ createdAt: -1 })
       .limit(10)
       .toArray();
 
     const goals = await db
       .collection("goals")
-      .find({ userId: new ObjectId(id) })
+      .find(userIdMatch)
       .toArray();
 
     const loginHistory = await db
       .collection("login_history")
-      .find({ userId: new ObjectId(id) })
+      .find(userIdMatch)
       .sort({ loginTime: -1 })
       .limit(10)
       .toArray();
 
-    const circles = await db
+    const circlesFromMembership = await db
       .collection("circles")
-      .find({ "members.userId": new ObjectId(id) })
+      .find({
+        $or: [
+          { "members.userId": userObjectId },
+          { "members.userId": id },
+          { createdBy: userObjectId },
+          { createdBy: id },
+        ],
+      })
       .sort({ createdAt: -1 })
       .toArray();
+
+    const fallbackCircleIds = (user.circles || [])
+      .map((c) => c?.circleId)
+      .filter((cid) => cid && ObjectId.isValid(cid))
+      .map((cid) => new ObjectId(cid));
+
+    const circlesFromUserDoc = fallbackCircleIds.length
+      ? await db
+          .collection("circles")
+          .find({ _id: { $in: fallbackCircleIds } })
+          .toArray()
+      : [];
+
+    const circlesMap = new Map();
+    [...circlesFromMembership, ...circlesFromUserDoc].forEach((c) => {
+      circlesMap.set(String(c._id), c);
+    });
+    const circles = Array.from(circlesMap.values());
 
     const transfers = await db
       .collection("transfers")
       .find({
         $or: [
-          { userId: new ObjectId(id) },
-          { fromUserId: new ObjectId(id) },
-          { toUserId: new ObjectId(id) },
+          { userId: userObjectId },
+          { userId: id },
+          { fromUserId: userObjectId },
+          { fromUserId: id },
+          { toUserId: userObjectId },
+          { toUserId: id },
         ],
       })
       .sort({ createdAt: -1 })
