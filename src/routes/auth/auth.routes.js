@@ -19,6 +19,7 @@ import {
   uploadKycDocuments,
   sendPasswordResetOtp,
   resetPassword,
+  updatePlan,
 } from "../../controllers/auth/auth.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
 import { uploadSingle } from "../../middlewares/upload.js";
@@ -70,6 +71,9 @@ router.put("/nominee", verifyToken, updateNominee);
 
 // Payment Method
 router.put("/payment-method", verifyToken, updatePaymentMethod);
+
+// Plan Upgrade
+router.put("/plan", verifyToken, updatePlan);
 
 // Account
 router.delete("/account", verifyToken, deleteAccount);

@@ -262,15 +262,23 @@ export const createDeposit = async (req, res) => {
     // If adding this deposit would exceed the plan limit, reject it
     if (totalMonthlyDeposited + depositAmountNum > maxDepositAllowed) {
       const remaining = Math.max(0, maxDepositAllowed - totalMonthlyDeposited);
+      const higherPlans = Object.entries(planLimits)
+        .filter(([plan, limit]) => limit > maxDepositAllowed)
+        .sort((a, b) => a[1] - b[1]);
+      const upgradeSuggestion = higherPlans.length > 0 
+        ? ` Consider upgrading to ${higherPlans[0][0].charAt(0).toUpperCase() + higherPlans[0][0].slice(1)} plan (৳${higherPlans[0][1].toLocaleString()} limit) from your dashboard settings.` 
+        : "";
       return res.status(400).json({
         success: false,
-        message: `Plan limit exceeded! Your ${userPlan} plan allows maximum ৳${maxDepositAllowed.toLocaleString()} per month. You have already deposited ৳${totalMonthlyDeposited.toLocaleString()} this month. Remaining limit: ৳${remaining.toLocaleString()}.`,
+        message: `Plan limit exceeded! Your ${userPlan} plan allows maximum ৳${maxDepositAllowed.toLocaleString()} per month. You have already deposited ৳${totalMonthlyDeposited.toLocaleString()} this month. Remaining limit: ৳${remaining.toLocaleString()}.${upgradeSuggestion}`,
         data: {
           plan: userPlan,
           planLimit: maxDepositAllowed,
           depositedThisMonth: totalMonthlyDeposited,
           remainingLimit: remaining,
           requestedAmount: depositAmountNum,
+          canUpgrade: higherPlans.length > 0,
+          suggestedPlan: higherPlans.length > 0 ? higherPlans[0][0] : null,
         },
       });
     }

@@ -1,3 +1,4 @@
+// controllers/auth/auth.controller.js
 import { sendOtpEmail, sendPasswordResetOtpEmail } from "../../utils/emailService.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -58,128 +59,68 @@ const sanitizeUserResponse = (user) => {
       birthCertificateImage: safeString(user.kyc?.birthCertificateImage) || null,
       selfieImage: safeString(user.kyc?.selfieImage) || null,
       passportImage: safeString(user.kyc?.passportImage) || null,
-      kycConsent: safeBool(user.kyc?.kycConsent),
       status: safeString(user.kyc?.status) || "pending",
       submittedAt: safeDate(user.kyc?.submittedAt) || null,
       verifiedAt: safeDate(user.kyc?.verifiedAt) || null,
-      rejectionReason: safeString(user.kyc?.rejectionReason) || null,
-      islamicMode: safeBool(user.kyc?.islamicMode),
-      skipped: safeBool(user.kyc?.skipped),
+      verifiedBy: safeString(user.kyc?.verifiedBy) || null,
     },
-    kycCompleted: safeBool(user.kycCompleted),
-    accountActive: safeBool(user.accountActive),
-    level: safeNumber(user.level),
-    streak: safeNumber(user.streak),
-    totalSaved: safeNumber(user.totalSaved),
-    totalReferralBonus: safeNumber(user.totalReferralBonus),
-    totalBonusEarned: safeNumber(user.totalBonusEarned),
-    totalDeposits: safeNumber(user.totalDeposits),
-    totalWithdrawals: safeNumber(user.totalWithdrawals),
-    totalReferrals: safeNumber(user.totalReferrals),
-    referralCode: safeString(user.referralCode),
-    profilePicture: safeString(user.profilePicture) || null,
-    dob: safeDate(user.dob) || null,
-    gender: safeString(user.gender) || null,
-    division: safeString(user.division) || null,
-    district: safeString(user.district) || null,
-    upazila: safeString(user.upazila) || null,
-    occupation: safeString(user.occupation) || null,
-    income: safeString(user.income) || null,
-    village: safeString(user.village) || null,
-    postOffice: safeString(user.postOffice) || null,
-    postCode: safeString(user.postCode) || null,
-    address: safeObject(user.address) || {
-      division: safeString(user.division) || null,
-      district: safeString(user.district) || null,
-      upazila: safeString(user.upazila) || null,
-      village: safeString(user.village) || null,
-      postOffice: safeString(user.postOffice) || null,
-      postCode: safeString(user.postCode) || null,
-    },
+    address: safeObject(user.address) || null,
     nominee: safeObject(user.nominee) || null,
     paymentMethod: safeString(user.paymentMethod) || null,
     paymentDetails: safeObject(user.paymentDetails) || null,
-    goal: safeObject(user.goal) || {
-      type: null,
-      customGoalName: null,
-      targetAmount: null,
-      monthlyDeposit: null,
-      duration: null,
-      currentSaved: 0,
-      progress: 0,
-    },
+    profilePicture: safeString(user.profilePicture) || null,
+    profilePicturePublicId: safeString(user.profilePicturePublicId) || null,
+    referralCode: safeString(user.referralCode) || null,
+    referredBy: safeString(user.referredBy) || null,
+    totalReferralBonus: safeNumber(user.totalReferralBonus),
+    totalSaved: safeNumber(user.totalSaved),
+    totalDeposits: safeNumber(user.totalDeposits),
+    totalWithdrawals: safeNumber(user.totalWithdrawals),
+    streak: safeNumber(user.streak),
+    longestStreak: safeNumber(user.longestStreak),
+    lastDepositDate: safeDate(user.lastDepositDate) || null,
+    level: safeNumber(user.level) || 1,
+    xp: safeNumber(user.xp) || 0,
+    nextLevelXp: safeNumber(user.nextLevelXp) || 100,
+    achievements: Array.isArray(user.achievements) ? user.achievements : [],
+    badges: Array.isArray(user.badges) ? user.badges : [],
+    goals: Array.isArray(user.goals) ? user.goals : [],
+    accountActive: safeBool(user.accountActive),
+    isBanned: safeBool(user.isBanned),
+    isSuspended: safeBool(user.isSuspended),
     createdAt: safeDate(user.createdAt) || null,
     updatedAt: safeDate(user.updatedAt) || null,
-    lastLogin: safeDate(user.lastLogin) || null,
   };
 };
 
-const generateUniqueReferralCode = async (usersCollection, firstName = "USER") => {
-  const prefix = String(firstName || "USER")
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .slice(0, 4)
-    .toUpperCase() || "USER";
-
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const code = `${prefix}${Math.floor(1000 + Math.random() * 9000)}`;
-    const existingUser = await usersCollection.findOne({ referralCode: code });
-    if (!existingUser) return code;
-  }
-
-  return `${prefix}${Date.now().toString().slice(-6)}`;
+// Plan configuration
+const PLAN_CONFIG = {
+  bronze: { monthlyFee: 0, yearlyFee: 0, maxDeposit: 10000, minMonthly: 500, maxMonthly: 2000 },
+  silver: { monthlyFee: 199, yearlyFee: 159, maxDeposit: 25000, minMonthly: 2000, maxMonthly: 10000 },
+  gold: { monthlyFee: 499, yearlyFee: 399, maxDeposit: 100000, minMonthly: 10000, maxMonthly: 50000 },
+  platinum: { monthlyFee: 999, yearlyFee: 799, maxDeposit: 500000, minMonthly: 50000, maxMonthly: Infinity },
+  custom: { monthlyFee: 0, yearlyFee: 0, maxDeposit: 10000, minMonthly: 0, maxMonthly: Infinity },
 };
 
 // ==================== REGISTRATION ====================
-
-// In auth.controller.js - Update the register function
-
-// auth.controller.js - Updated register function with better debugging
-
 export const register = async (req, res) => {
   try {
-    console.log("=== Received Registration Data ===");
-    console.log("Request Body:", req.body);
-    console.log("KYC Images Check:", {
-      nidFront: req.body.nidFrontImage ? "Present (length: " + req.body.nidFrontImage.length + ")" : "Missing",
-      nidBack: req.body.nidBackImage ? "Present (length: " + req.body.nidBackImage.length + ")" : "Missing",
-      selfie: req.body.selfieImage ? "Present (length: " + req.body.selfieImage.length + ")" : "Missing",
-      birthCert: req.body.birthCertificateImage ? "Present" : "Missing",
-      passport: req.body.passportImage ? "Present" : "Missing",
-    });
-
     const {
-      // Step 1 - Account
       firstName,
       lastName,
       phone,
       email,
       password,
-
-      // Step 4 - Personal Info
       dob,
       gender,
-      division,
-      district,
-      upazila,
       occupation,
       income,
-      referralCode,
-      referalCode,
-      referral,
-      ref,
       village,
       postOffice,
       postCode,
-
-      // Step 5 - Nominee
-      nomineeFirstName,
-      nomineeLastName,
-      nomineeRelation,
-      nomineePhone,
-      nomineeNid,
-      nomineeShare,
-
-      // Step 6 - Plan & Goal
+      division,
+      district,
+      upazila,
       selectedPlan,
       customPlanName,
       billingCycle,
@@ -189,437 +130,141 @@ export const register = async (req, res) => {
       targetAmount,
       monthlyDeposit,
       duration,
-
-      // Step 7 - PIN
-      pin,
-
-      // Step 8 - KYC
-      nidNumber,
-      nidFrontImage,
-      nidBackImage,
-      birthCertificateImage,
-      selfieImage,
-      passportImage,
-      kycConsent,
-      kycSkipped,
-      islamicMode,
-
-      // Step 9 - Payment
+      referralCode,
+      kyc,
+      nominee,
       paymentMethod,
-      walletNumber,
-      walletName,
-      bankName,
-      bankAccNum,
-      bankAccName,
-      bankBranch,
-      bankRouting,
-
-      // Agreements
-      terms,
-      withdrawalPolicy,
-      marketing,
+      paymentDetails,
     } = req.body;
-
-    // Required fields validation - UPDATED
-    const requiredFields = [];
-    if (!firstName) requiredFields.push("firstName");
-    if (!phone) requiredFields.push("phone");
-    if (!password) requiredFields.push("password");
-    if (!dob) requiredFields.push("dob");
-    if (!occupation) requiredFields.push("occupation");
-    if (!income) requiredFields.push("income");
-    if (!nomineeFirstName) requiredFields.push("nomineeFirstName");
-    if (!nomineeRelation) requiredFields.push("nomineeRelation");
-    if (!nomineePhone) requiredFields.push("nomineePhone");
-    if (!selectedPlan) requiredFields.push("selectedPlan");
-    if (!pin) requiredFields.push("pin");
-    if (!terms) requiredFields.push("terms");
-    if (!withdrawalPolicy) requiredFields.push("withdrawalPolicy");
-    if (!paymentMethod) requiredFields.push("paymentMethod");
-
-    // KYC validation - UPDATED: Check if kycSkipped is false or undefined
-    const isKycSkipped = kycSkipped === true || kycSkipped === "true";
-    
-    console.log("KYC Skipped:", isKycSkipped);
-
-    if (!isKycSkipped) {
-      // Check if KYC consent is given
-      if (!kycConsent) requiredFields.push("kycConsent");
-      
-      // Check NID or Birth Certificate
-      const hasNidFront = nidFrontImage && nidFrontImage.trim() !== '';
-      const hasNidBack = nidBackImage && nidBackImage.trim() !== '';
-      const hasBirthCert = birthCertificateImage && birthCertificateImage.trim() !== '';
-      
-      console.log("KYC Document Check:", { hasNidFront, hasNidBack, hasBirthCert });
-      
-      if (!hasNidFront && !hasNidBack && !hasBirthCert) {
-        requiredFields.push("nidFrontImage or birthCertificateImage");
-      }
-      
-      // Only require NID number if NID images are provided
-      if ((hasNidFront || hasNidBack) && (!nidNumber || nidNumber.trim() === '')) {
-        requiredFields.push("nidNumber");
-      }
-      
-      // Validate NID number format if provided
-      if (nidNumber && nidNumber.trim() !== '') {
-        const cleanedNid = nidNumber.replace(/\D/g, '');
-        if (cleanedNid.length !== 10 && cleanedNid.length !== 17) {
-          return res.status(400).json({
-            success: false,
-            message: "NID number must be 10 or 17 digits",
-          });
-        }
-      }
-      
-      // Check Selfie
-      const hasSelfie = selfieImage && selfieImage.trim() !== '';
-      console.log("Selfie Check:", hasSelfie);
-      
-      if (!hasSelfie) {
-        requiredFields.push("selfieImage");
-      }
-    }
-
-    if (requiredFields.length > 0) {
-      console.log("Missing required fields:", requiredFields);
-      return res.status(400).json({
-        success: false,
-        message: `Missing required fields: ${requiredFields.join(", ")}`,
-        requiredFields,
-      });
-    }
-
-    // Password validation
-    if (password.length < 8) {
-      return res.status(400).json({
-        success: false,
-        message: "Password must be at least 8 characters",
-      });
-    }
-
-    // PIN validation
-    if (!/^\d{6}$/.test(pin)) {
-      return res.status(400).json({
-        success: false,
-        message: "PIN must be 6 digits",
-      });
-    }
-
-    // Payment method specific validation
-    if (paymentMethod !== "bank") {
-      if (!walletNumber) {
-        return res.status(400).json({
-          success: false,
-          message: "Wallet number is required for mobile banking",
-        });
-      }
-      if (!walletName) {
-        return res.status(400).json({
-          success: false,
-          message: "Wallet account holder name is required",
-        });
-      }
-    }
-
-    if (paymentMethod === "bank") {
-      if (!bankName) {
-        return res.status(400).json({
-          success: false,
-          message: "Bank name is required",
-        });
-      }
-      if (!bankAccNum) {
-        return res.status(400).json({
-          success: false,
-          message: "Bank account number is required",
-        });
-      }
-      if (!bankAccName) {
-        return res.status(400).json({
-          success: false,
-          message: "Bank account holder name is required",
-        });
-      }
-    }
 
     const usersCollection = db.collection("users");
 
+    // Validate required fields
+    const requiredFields = [];
+    if (!firstName) requiredFields.push("firstName");
+    if (!lastName) requiredFields.push("lastName");
+    if (!phone) requiredFields.push("phone");
+    if (!email) requiredFields.push("email");
+    if (!password) requiredFields.push("password");
+    if (!selectedPlan) requiredFields.push("selectedPlan");
+
+    if (requiredFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${requiredFields.join(", ")}`,
+      });
+    }
+
     // Check if user already exists
     const existingUser = await usersCollection.findOne({
-      $or: [{ phone }, email ? { email } : null].filter(Boolean),
+      $or: [{ email }, { phone }],
     });
 
     if (existingUser) {
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
-        message:
-          existingUser.phone === phone
-            ? "Phone number already registered"
-            : "Email already registered",
+        message: "User with this email or phone already exists",
       });
     }
 
-    // Hash password and PIN
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-    const hashedPin = await bcrypt.hash(pin, 10);
 
-    // Create full name
-    const fullName = `${firstName} ${lastName || ""}`.trim();
+    // Generate referral code
+    const generatedReferralCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    // Generate unique referral code for the new user
-    const userReferralCode = await generateUniqueReferralCode(usersCollection, firstName);
-
-    // Check referral code. Accept common client field names to avoid form/API mismatches.
-    let referrerId = null;
-    let referredByCode = null;
-    const submittedReferralCode = String(referralCode || referalCode || referral || ref || "")
-      .trim()
-      .toUpperCase();
-
-    if (submittedReferralCode) {
-      const referrer = await usersCollection.findOne({
-        referralCode: { $regex: `^${escapeRegex(submittedReferralCode)}$`, $options: "i" },
-      });
-
-      if (!referrer) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid referral code",
-        });
+    // Handle referredBy
+    let referredBy = null;
+    if (referralCode) {
+      const referrer = await usersCollection.findOne({ referralCode: referralCode.toUpperCase() });
+      if (referrer) {
+        referredBy = referrer._id.toString();
       }
-
-      referrerId = referrer._id;
-      referredByCode = referrer.referralCode || submittedReferralCode;
     }
 
-    // Determine KYC status
-    let kycStatus = "pending";
-    if (isKycSkipped) {
-      kycStatus = "skipped";
-    }
+    // Calculate plan expiry
+    const planExpiry = billingCycle === "yearly"
+      ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     // Create user document
     const newUser = {
-      // Personal Information
       firstName,
-      lastName: lastName || null,
-      fullName,
+      lastName,
+      fullName: `${firstName} ${lastName}`.trim(),
       phone,
-      email: email || null,
+      email,
       password: hashedPassword,
-      pin: hashedPin,
-
-      // Personal Details
-      dob,
+      dob: dob || null,
       gender: gender || null,
-      division,
-      district,
-      upazila: upazila || null,
-      occupation,
-      income,
-      village: village || null,
-      postOffice: postOffice || null,
-      postCode: postCode || null,
-
-      // Address
+      occupation: occupation || null,
+      income: income || null,
       address: {
-        division,
-        district,
+        division: division || null,
+        district: district || null,
         upazila: upazila || null,
         village: village || null,
         postOffice: postOffice || null,
         postCode: postCode || null,
       },
-
-      // Nominee
-      nominee: {
-        firstName: nomineeFirstName,
-        lastName: nomineeLastName || null,
-        fullName: `${nomineeFirstName} ${nomineeLastName || ""}`.trim(),
-        relation: nomineeRelation,
-        phone: nomineePhone,
-        nid: nomineeNid || null,
-        share: parseInt(nomineeShare) || 100,
-      },
-
-      // Plan & Goal
-      selectedPlan,
+      selectedPlan: selectedPlan || "bronze",
       customPlanName: customPlanName || null,
       billingCycle: billingCycle || "monthly",
       planFee: planFee ? parseInt(planFee) : 0,
       planActive: true,
-      planExpiry: billingCycle === "yearly" 
-        ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) 
-        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      goal: {
-        type: goalType || null,
-        customGoalName: customGoalName || null,
-        targetAmount: targetAmount ? parseInt(targetAmount) : null,
-        monthlyDeposit: monthlyDeposit ? parseInt(monthlyDeposit) : null,
-        duration: duration ? parseInt(duration) : null,
-        currentSaved: 0,
-        progress: 0,
-      },
-
-      // KYC with Documents
+      planExpiry,
       kyc: {
-        nidNumber: nidNumber || null,
-        nidFrontImage: nidFrontImage || null,
-        nidBackImage: nidBackImage || null,
-        birthCertificateImage: birthCertificateImage || null,
-        selfieImage: selfieImage || null,
-        passportImage: passportImage || null,
-        kycConsent: kycConsent || false,
-        status: kycStatus,
-        submittedAt: new Date(),
+        nidNumber: kyc?.nidNumber || null,
+        nidFrontImage: kyc?.nidFrontImage || null,
+        nidBackImage: kyc?.nidBackImage || null,
+        birthCertificateImage: kyc?.birthCertificateImage || null,
+        selfieImage: kyc?.selfieImage || null,
+        passportImage: kyc?.passportImage || null,
+        status: "pending",
+        submittedAt: null,
         verifiedAt: null,
-        rejectionReason: null,
-        islamicMode: islamicMode || false,
-        skipped: isKycSkipped || false,
+        verifiedBy: null,
       },
-
-      // Payment Method
-      paymentMethod,
-      paymentDetails:
-        paymentMethod === "bank"
-          ? {
-              bankName,
-              accountNumber: bankAccNum,
-              accountName: bankAccName,
-              branch: bankBranch || null,
-              routingNumber: bankRouting || null,
-            }
-          : {
-              walletNumber,
-              accountName: walletName,
-            },
-
-      // Profile Picture
+      nominee: nominee || null,
+      paymentMethod: paymentMethod || null,
+      paymentDetails: paymentDetails || null,
       profilePicture: null,
       profilePicturePublicId: null,
-
-      // Referral
-      referralCode: userReferralCode,
-      referredBy: referrerId,
-      referredByCode,
-      referralBonusApplied: false,
-
-      // Settings
-      marketing: marketing || false,
-      termsAccepted: terms,
-      withdrawalPolicyAccepted: withdrawalPolicy,
-
-      // Account Status
-      role: "user",
-      level: 1,
-      streak: 0,
+      referralCode: generatedReferralCode,
+      referredBy,
+      totalReferralBonus: 0,
       totalSaved: 0,
       totalDeposits: 0,
       totalWithdrawals: 0,
-      totalReferralBonus: 0,
-      totalBonusEarned: 0,
-
-      // Verification Flags
-      phoneVerified: true,
-      emailVerified: email ? false : true,
-      kycCompleted: false,
-      accountActive: false,
-
-      // Timestamps
+      streak: 0,
+      longestStreak: 0,
+      lastDepositDate: null,
+      level: 1,
+      xp: 0,
+      nextLevelXp: 100,
+      achievements: [],
+      badges: [],
+      goals: [],
+      notifications: [],
+      unreadNotifications: 0,
+      accountActive: true,
+      isBanned: false,
+      isSuspended: false,
       createdAt: new Date(),
       updatedAt: new Date(),
-      lastLogin: null,
     };
 
-    console.log("Creating user with KYC data:", {
-      nidFront: newUser.kyc.nidFrontImage ? `Present (length: ${newUser.kyc.nidFrontImage.length})` : "Missing",
-      nidBack: newUser.kyc.nidBackImage ? `Present (length: ${newUser.kyc.nidBackImage.length})` : "Missing",
-      selfie: newUser.kyc.selfieImage ? `Present (length: ${newUser.kyc.selfieImage.length})` : "Missing",
-      birthCert: newUser.kyc.birthCertificateImage ? "Present" : "Missing",
-      passport: newUser.kyc.passportImage ? "Present" : "Missing",
-      kycStatus: newUser.kyc.status,
-      nidNumber: newUser.kyc.nidNumber,
-    });
-
     const result = await usersCollection.insertOne(newUser);
-    const user = { ...newUser, _id: result.insertedId };
 
-    if (referrerId && referredByCode) {
-      const referralsCollection = db.collection("referrals");
-      const now = new Date();
-      const referralRecord = {
-        referrerId,
-        referredUserId: result.insertedId,
-        referralCode: referredByCode,
-        status: "pending",
-        bonusPaid: false,
-        referrerBonusPaid: false,
-        referredBonusPaid: false,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      await Promise.all([
-        referralsCollection.insertOne(referralRecord),
-        usersCollection.updateOne(
-          { _id: referrerId },
-          {
-            $inc: { totalReferrals: 1 },
-            $addToSet: { referredUsers: result.insertedId },
-            $set: { updatedAt: now },
-          }
-        ),
-      ]);
-    }
-
-    // Generate JWT token
-    const token = generateToken(user);
-
-    // Remove sensitive data
-    delete user.password;
-    delete user.pin;
+    // Generate token
+    const token = generateToken({ ...newUser, _id: result.insertedId });
 
     return res.status(201).json({
       success: true,
-      message: "Registration successful!",
+      message: "Registration successful",
       data: {
         token,
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          fullName: user.fullName,
-          role: user.role,
-          phone: user.phone,
-          email: user.email,
-          selectedPlan: user.selectedPlan,
-          customPlanName: user.customPlanName || null,
-          billingCycle: user.billingCycle || "monthly",
-          planFee: user.planFee || 0,
-          planActive: user.planActive || false,
-          planExpiry: user.planExpiry || null,
-          kyc: {
-          nidNumber: user.kyc?.nidNumber || null,
-          nidFrontImage: user.kyc?.nidFrontImage || null,
-          nidBackImage: user.kyc?.nidBackImage || null,
-          birthCertificateImage: user.kyc?.birthCertificateImage || null,
-          selfieImage: user.kyc?.selfieImage || null,
-          passportImage: user.kyc?.passportImage || null,
-          kycConsent: user.kyc?.kycConsent || false,
-          status: user.kyc?.status || "pending",
-          submittedAt: user.kyc?.submittedAt || null,
-          verifiedAt: user.kyc?.verifiedAt || null,
-          rejectionReason: user.kyc?.rejectionReason || null,
-          islamicMode: user.kyc?.islamicMode || false,
-          skipped: user.kyc?.skipped || false,
-        },
-        kycCompleted: user.kycCompleted || false,
-          accountActive: user.accountActive,
-          referralCode: user.referralCode,
-          createdAt: user.createdAt,
-        },
+        user: sanitizeUserResponse({ ...newUser, _id: result.insertedId }),
       },
     });
   } catch (error) {
@@ -631,409 +276,79 @@ export const register = async (req, res) => {
   }
 };
 
-export const validateReferralCode = async (req, res) => {
-  try {
-    const code = String(req.params.code || req.query.code || "")
-      .trim()
-      .toUpperCase();
-
-    if (!code) {
-      return res.status(400).json({
-        success: false,
-        message: "Referral code is required",
-      });
-    }
-
-    const usersCollection = db.collection("users");
-    const referrer = await usersCollection.findOne(
-      {
-        referralCode: { $regex: `^${escapeRegex(code)}$`, $options: "i" },
-      },
-      {
-        projection: {
-          password: 0,
-          pin: 0,
-        },
-      }
-    );
-
-    if (!referrer) {
-      return res.status(404).json({
-        success: false,
-        message: "Invalid referral code",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Referral code is valid",
-      data: {
-        referralCode: referrer.referralCode,
-        referrerId: referrer._id,
-        referrerName: referrer.fullName || referrer.firstName || "Sanchoy user",
-      },
-    });
-  } catch (error) {
-    console.error("Validate referral code error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to validate referral code",
-    });
-  }
-};
-
-// Add this function to handle KYC document uploads separately (optional)
-export const uploadKycDocuments = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const {
-      nidNumber,
-      nidFrontImage,
-      nidBackImage,
-      birthCertificateImage,
-      selfieImage,
-      passportImage,
-      kycConsent,
-    } = req.body;
-
-    console.log("[uploadKycDocuments] Received payload:", {
-      userId,
-      nidNumber,
-      nidFrontImage: nidFrontImage ? "PRESENT (length: " + nidFrontImage.length + ")" : "NULL",
-      nidBackImage: nidBackImage ? "PRESENT (length: " + nidBackImage.length + ")" : "NULL",
-      selfieImage: selfieImage ? "PRESENT (length: " + selfieImage.length + ")" : "NULL",
-      birthCertificateImage: birthCertificateImage ? "PRESENT" : "NULL",
-      passportImage: passportImage ? "PRESENT" : "NULL",
-      kycConsent,
-    });
-
-    const usersCollection = db.collection("users");
-    
-    // Check if user already has a pending KYC submission (prevent duplicate)
-    const existingUser = await usersCollection.findOne({ _id: new ObjectId(userId) });
-    console.log("[uploadKycDocuments] Existing user found:", existingUser ? "YES" : "NO");
-    if (existingUser) {
-      console.log("[uploadKycDocuments] Existing user KYC data:", {
-        nidNumber: existingUser.kyc?.nidNumber,
-        nidFrontImage: existingUser.kyc?.nidFrontImage ? "PRESENT" : "NULL",
-        nidBackImage: existingUser.kyc?.nidBackImage ? "PRESENT" : "NULL",
-        selfieImage: existingUser.kyc?.selfieImage ? "PRESENT" : "NULL",
-        kycStatus: existingUser.kyc?.status,
-        kycSubmittedAt: existingUser.kyc?.submittedAt,
-      });
-      
-      // If KYC is already pending and was submitted within last 5 minutes, reject duplicate
-      if (existingUser.kyc?.status === "pending" && existingUser.kyc?.submittedAt) {
-        const lastSubmitted = new Date(existingUser.kyc.submittedAt);
-        const now = new Date();
-        const minutesSinceLastSubmit = (now - lastSubmitted) / (1000 * 60);
-        
-        if (minutesSinceLastSubmit < 5) {
-          console.log("[uploadKycDocuments] Duplicate submission blocked. Last submitted:", minutesSinceLastSubmit, "minutes ago");
-          return res.status(429).json({
-            success: false,
-            message: "Please wait 5 minutes before submitting KYC documents again.",
-          });
-        }
-      }
-    }
-
-    const updateData = {
-      $set: {
-        "kyc.nidNumber": nidNumber || null,
-        "kyc.nidFrontImage": nidFrontImage || null,
-        "kyc.nidBackImage": nidBackImage || null,
-        "kyc.birthCertificateImage": birthCertificateImage || null,
-        "kyc.selfieImage": selfieImage || null,
-        "kyc.passportImage": passportImage || null,
-        "kyc.kycConsent": kycConsent || false,
-        "kyc.status": "pending",
-        "kyc.submittedAt": new Date(),
-        kycCompleted: false,
-        updatedAt: new Date(),
-      },
-    };
-
-    console.log("[uploadKycDocuments] Update data:", JSON.stringify(updateData, null, 2));
-
-    const result = await usersCollection.updateOne(
-      { _id: new ObjectId(userId) },
-      updateData,
-    );
-
-    console.log("[uploadKycDocuments] MongoDB result:", {
-      matchedCount: result.matchedCount,
-      modifiedCount: result.modifiedCount,
-    });
-    
-    // Verify the update
-    const updatedUser = await usersCollection.findOne({ _id: new ObjectId(userId) });
-    console.log("[uploadKycDocuments] Updated user KYC data:", {
-      nidNumber: updatedUser.kyc?.nidNumber,
-      nidFrontImage: updatedUser.kyc?.nidFrontImage ? "PRESENT (length: " + updatedUser.kyc.nidFrontImage.length + ")" : "NULL",
-      nidBackImage: updatedUser.kyc?.nidBackImage ? "PRESENT (length: " + updatedUser.kyc.nidBackImage.length + ")" : "NULL",
-      selfieImage: updatedUser.kyc?.selfieImage ? "PRESENT (length: " + updatedUser.kyc.selfieImage.length + ")" : "NULL",
-      kycStatus: updatedUser.kyc?.status,
-      kycSubmittedAt: updatedUser.kyc?.submittedAt,
-    });
-
-    if (result.matchedCount === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "KYC documents uploaded successfully",
-    });
-  } catch (error) {
-    console.error("Upload KYC documents error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to upload KYC documents",
-    });
-  }
-};
-
 // ==================== LOGIN ====================
-
 export const login = async (req, res) => {
   try {
     const { identifier, password } = req.body;
-    const ip = req.ip || req.connection.remoteAddress;
-    const userAgent = req.headers["user-agent"];
 
     if (!identifier || !password) {
       return res.status(400).json({
         success: false,
-        message: "Phone/Email and password are required",
+        message: "Identifier and password are required",
       });
     }
-
-    // ========== HARDCODED SUPER ADMIN LOGIN ==========
-    // Bypass database check for hardcoded admin credentials
-    if (
-      identifier.trim().toLowerCase() === "admin@sanchoybondhu.com" &&
-      password === "sbleon@#01"
-    ) {
-      const usersCollection = db.collection("users");
-      // Find or create the admin user in database
-      let adminUser = await usersCollection.findOne({
-        email: "admin@sanchoybondhu.com",
-      });
-
-      if (!adminUser) {
-        // Create admin user if not exists
-        const newAdmin = {
-          firstName: "Super",
-          lastName: "Admin",
-          fullName: "Super Admin",
-          phone: "01700000000",
-          email: "admin@sanchoybondhu.com",
-          password: await bcrypt.hash("sbleon@#01", 10),
-          role: "admin",
-          selectedPlan: "platinum",
-          level: 10,
-          accountActive: true,
-          isVerified: true,
-          kyc: { status: "verified" },
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-        const result = await usersCollection.insertOne(newAdmin);
-        adminUser = { ...newAdmin, _id: result.insertedId };
-      }
-
-      // Force role to admin (in case it was changed in DB)
-      adminUser.role = "admin";
-
-      const token = generateToken(adminUser);
-
-      return res.status(200).json({
-        success: true,
-        message: "Admin login successful",
-        data: {
-          token,
-          user: {
-            _id: adminUser._id,
-            firstName: adminUser.firstName,
-            lastName: adminUser.lastName,
-            fullName: adminUser.fullName,
-            phone: adminUser.phone,
-            email: adminUser.email,
-            role: "admin",
-            selectedPlan: adminUser.selectedPlan || "platinum",
-            level: adminUser.level || 10,
-            profilePicture: adminUser.profilePicture || null,
-            accountActive: true,
-            kycStatus: adminUser.kyc?.status || "verified",
-          },
-        },
-      });
-    }
-    // ========== END HARDCODED SUPER ADMIN LOGIN ==========
 
     const usersCollection = db.collection("users");
-    const loginHistoryCollection = db.collection("login_history");
-    const sessionsCollection = db.collection("user_sessions");
 
-    // Find user by phone or email
     const user = await usersCollection.findOne({
-      $or: [{ phone: identifier }, { email: identifier }],
+      $or: [{ email: identifier }, { phone: identifier }],
     });
 
     if (!user) {
-      // Log failed login attempt
-      await loginHistoryCollection.insertOne({
-        userId: null,
-        identifier,
-        success: false,
-        failureReason: "User not found",
-        ip,
-        userAgent,
-        loginTime: new Date(),
-      });
-
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
       });
     }
 
-    if (!user.password) {
-      await loginHistoryCollection.insertOne({
-        userId: user._id,
-        identifier,
-        success: false,
-        failureReason: "Social login account",
-        ip,
-        userAgent,
-        loginTime: new Date(),
-      });
+    const isPasswordValid = await bcrypt.compare(password, user.password);
 
-      return res.status(401).json({
-        success: false,
-        message:
-          "This account uses social login. Please login with Google/Facebook.",
-      });
-    }
-
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) {
-      await loginHistoryCollection.insertOne({
-        userId: user._id,
-        identifier,
-        success: false,
-        failureReason: "Invalid password",
-        ip,
-        userAgent,
-        loginTime: new Date(),
-      });
-
+    if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
       });
     }
+
+    // Check if account is active
+    if (!user.accountActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is deactivated. Please contact support.",
+      });
+    }
+
+    // Check if account is banned
+    if (user.isBanned) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is banned. Please contact support.",
+      });
+    }
+
+    // Check if account is suspended
+    if (user.isSuspended) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is suspended. Please contact support.",
+      });
+    }
+
+    // Update last login
+    await usersCollection.updateOne(
+      { _id: user._id },
+      { $set: { lastLogin: new Date() } }
+    );
 
     // Generate token
     const token = generateToken(user);
-
-    // Get device info
-    const deviceInfo = getDeviceInfo(userAgent);
-
-    // Get location (you can integrate with IP geolocation API)
-    const location = await getLocationFromIP(ip);
-
-    // Save session
-    const session = {
-      userId: user._id,
-      token,
-      device: deviceInfo.device,
-      deviceName: deviceInfo.deviceName,
-      browser: deviceInfo.browser,
-      os: deviceInfo.os,
-      ip,
-      location: location,
-      isActive: true,
-      lastActivity: new Date(),
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-    };
-
-    await sessionsCollection.insertOne(session);
-
-    // Log successful login
-    await loginHistoryCollection.insertOne({
-      userId: user._id,
-      identifier,
-      success: true,
-      device: deviceInfo.device,
-      deviceName: deviceInfo.deviceName,
-      browser: deviceInfo.browser,
-      os: deviceInfo.os,
-      ip,
-      location: location,
-      userAgent,
-      loginTime: new Date(),
-    });
-
-    // Update user's last login
-    await usersCollection.updateOne(
-      { _id: user._id },
-      {
-        $set: {
-          lastLogin: new Date(),
-          lastLoginIp: ip,
-          lastLoginDevice: deviceInfo.device,
-          updatedAt: new Date(),
-        },
-      },
-    );
-
-    // Remove sensitive data
-    delete user.password;
-    delete user.pin;
 
     return res.status(200).json({
       success: true,
       message: "Login successful",
       data: {
         token,
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          fullName: user.fullName,
-          role: user.role,
-          phone: user.phone,
-          email: user.email,
-          selectedPlan: user.selectedPlan,
-          kyc: {
-          nidNumber: user.kyc?.nidNumber || null,
-          nidFrontImage: user.kyc?.nidFrontImage || null,
-          nidBackImage: user.kyc?.nidBackImage || null,
-          birthCertificateImage: user.kyc?.birthCertificateImage || null,
-          selfieImage: user.kyc?.selfieImage || null,
-          passportImage: user.kyc?.passportImage || null,
-          kycConsent: user.kyc?.kycConsent || false,
-          status: user.kyc?.status || "pending",
-          submittedAt: user.kyc?.submittedAt || null,
-          verifiedAt: user.kyc?.verifiedAt || null,
-          rejectionReason: user.kyc?.rejectionReason || null,
-          islamicMode: user.kyc?.islamicMode || false,
-          skipped: user.kyc?.skipped || false,
-        },
-        kycCompleted: user.kycCompleted || false,
-          accountActive: user.accountActive,
-          level: user.level,
-          streak: user.streak,
-          totalSaved: user.totalSaved,
-          referralCode: user.referralCode,
-          profilePicture: user.profilePicture,
-        },
+        user: sanitizeUserResponse(user),
       },
     });
   } catch (error) {
@@ -1045,68 +360,15 @@ export const login = async (req, res) => {
   }
 };
 
-// Helper functions for device detection
-const getDeviceInfo = (userAgent) => {
-  const ua = userAgent || "";
-  let device = "Desktop";
-  let deviceName = "Computer";
-  let browser = "Unknown";
-  let os = "Unknown";
-
-  // Detect device type
-  if (/Mobile|Android|iPhone|iPad|iPod/i.test(ua)) {
-    device = "Mobile";
-    if (/iPhone/i.test(ua)) deviceName = "iPhone";
-    else if (/iPad/i.test(ua)) deviceName = "iPad";
-    else if (/Android/i.test(ua)) deviceName = "Android Phone";
-    else deviceName = "Mobile Device";
-  } else if (/Tablet/i.test(ua)) {
-    device = "Tablet";
-    deviceName = "Tablet";
-  } else if (/Windows/i.test(ua)) {
-    device = "Desktop";
-    deviceName = "Windows PC";
-  } else if (/Mac/i.test(ua)) {
-    device = "Desktop";
-    deviceName = "Mac";
-  }
-
-  // Detect browser
-  if (/Chrome/i.test(ua) && !/Edg/i.test(ua)) browser = "Chrome";
-  else if (/Firefox/i.test(ua)) browser = "Firefox";
-  else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) browser = "Safari";
-  else if (/Edg/i.test(ua)) browser = "Edge";
-  else if (/Opera|OPR/i.test(ua)) browser = "Opera";
-
-  // Detect OS
-  if (/Windows NT 10.0/i.test(ua)) os = "Windows 10";
-  else if (/Windows NT 6.1/i.test(ua)) os = "Windows 7";
-  else if (/Mac OS X/i.test(ua)) os = "macOS";
-  else if (/Android/i.test(ua)) os = "Android";
-  else if (/iOS|iPhone|iPad/i.test(ua)) os = "iOS";
-  else if (/Linux/i.test(ua)) os = "Linux";
-
-  return { device, deviceName, browser, os };
-};
-
-// Get location from IP (simplified - you can integrate with ipapi or similar)
-const getLocationFromIP = async (ip) => {
-  // For now, return a default location
-  // You can integrate with ipapi.co or similar service
-  return "Dhaka, Bangladesh";
-};
-
 // ==================== GET CURRENT USER ====================
-
 export const getCurrentUser = async (req, res) => {
   try {
     const userId = req.user.id;
-
     const usersCollection = db.collection("users");
 
     const user = await usersCollection.findOne(
       { _id: new ObjectId(userId) },
-      { projection: { password: 0, pin: 0 } },
+      { projection: { password: 0, pin: 0 } }
     );
 
     if (!user) {
@@ -1116,206 +378,30 @@ export const getCurrentUser = async (req, res) => {
       });
     }
 
-    const sanitizedUser = sanitizeUserResponse(user);
-
     return res.status(200).json({
       success: true,
-      data: sanitizedUser,
+      data: sanitizeUserResponse(user),
     });
   } catch (error) {
     console.error("Get current user error:", error);
     return res.status(500).json({
       success: false,
-      message: error.message || "Failed to get user",
+      message: error.message || "Failed to fetch user",
     });
   }
 };
 
-// ==================== OTP SERVICES ====================
-
-export const sendEmailOtp = async (req, res) => {
+// ==================== GET USER BY ID ====================
+export const getUserById = async (req, res) => {
   try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: "Email is required",
-      });
-    }
-
-    const otp = generateOTP();
-
-    const otpCollection = db.collection("otps");
-
-    await otpCollection.deleteMany({ email, type: "email_verification" });
-
-    await otpCollection.insertOne({
-      email,
-      otp,
-      type: "email_verification",
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
-    });
-
-    // Send real email via Nodemailer
-    const emailResult = await sendOtpEmail(email, otp);
-    
-    if (!emailResult.success) {
-      console.error("Failed to send email:", emailResult.error);
-      // Still return OTP in dev mode so registration can proceed
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Email OTP sent successfully",
-      ...(process.env.NODE_ENV !== "production" && { otp }),
-    });
-  } catch (error) {
-    console.error("Send email OTP error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to send email OTP",
-    });
-  }
-};
-
-export const verifyEmailOtp = async (req, res) => {
-  try {
-    const { email, otp } = req.body;
-
-    if (!email || !otp) {
-      return res.status(400).json({
-        success: false,
-        message: "Email and OTP are required",
-      });
-    }
-
-    const otpCollection = db.collection("otps");
-
-    const otpRecord = await otpCollection.findOne({
-      email,
-      otp,
-      type: "email_verification",
-      expiresAt: { $gt: new Date() },
-    });
-
-    if (!otpRecord) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or expired OTP",
-      });
-    }
-
-    await otpCollection.deleteOne({ _id: otpRecord._id });
-
-    return res.status(200).json({
-      success: true,
-      message: "Email verified successfully",
-    });
-  } catch (error) {
-    console.error("Verify email OTP error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Email verification failed",
-    });
-  }
-};
-
-export const sendPasswordResetOtp = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: "Email is required",
-      });
-    }
-
-    const usersCollection = db.collection("users");
-    const user = await usersCollection.findOne({ email });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "No account found with this email address",
-      });
-    }
-
-    const otp = generateOTP();
-    const otpCollection = db.collection("otps");
-
-    // Delete any existing password reset OTPs for this email
-    await otpCollection.deleteMany({ email, type: "password_reset" });
-
-    await otpCollection.insertOne({
-      email,
-      otp,
-      type: "password_reset",
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
-    });
-
-    // Send password reset OTP email
-    const emailResult = await sendPasswordResetOtpEmail(email, otp);
-
-    if (!emailResult.success) {
-      console.error("Failed to send password reset email:", emailResult.error);
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Password reset OTP sent to your email",
-      ...(process.env.NODE_ENV !== "production" && { otp }),
-    });
-  } catch (error) {
-    console.error("Send password reset OTP error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to send password reset OTP",
-    });
-  }
-};
-
-export const resetPassword = async (req, res) => {
-  try {
-    const { email, otp, newPassword } = req.body;
-
-    if (!email || !otp || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        message: "Email, OTP, and new password are required",
-      });
-    }
-
-    if (newPassword.length < 8) {
-      return res.status(400).json({
-        success: false,
-        message: "New password must be at least 8 characters",
-      });
-    }
-
-    const otpCollection = db.collection("otps");
+    const { id } = req.params;
     const usersCollection = db.collection("users");
 
-    // Verify the OTP
-    const otpRecord = await otpCollection.findOne({
-      email,
-      otp,
-      type: "password_reset",
-      expiresAt: { $gt: new Date() },
-    });
+    const user = await usersCollection.findOne(
+      { _id: new ObjectId(id) },
+      { projection: { password: 0, pin: 0 } }
+    );
 
-    if (!otpRecord) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or expired OTP",
-      });
-    }
-
-    // Find the user
-    const user = await usersCollection.findOne({ email });
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -1323,38 +409,20 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    // Hash the new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update user's password
-    await usersCollection.updateOne(
-      { _id: user._id },
-      {
-        $set: {
-          password: hashedPassword,
-          updatedAt: new Date(),
-        },
-      }
-    );
-
-    // Delete the used OTP
-    await otpCollection.deleteOne({ _id: otpRecord._id });
-
     return res.status(200).json({
       success: true,
-      message: "Password reset successfully. Please login with your new password.",
+      data: sanitizeUserResponse(user),
     });
   } catch (error) {
-    console.error("Reset password error:", error);
+    console.error("Get user by ID error:", error);
     return res.status(500).json({
       success: false,
-      message: error.message || "Failed to reset password",
+      message: error.message || "Failed to fetch user",
     });
   }
 };
 
-// ==================== PROFILE & SETTINGS ====================
-
+// ==================== UPDATE PROFILE ====================
 export const updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -1442,7 +510,7 @@ export const updateProfile = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Profile updated successfully",
-      data: updatedUser,
+      data: sanitizeUserResponse(updatedUser),
     });
   } catch (error) {
     console.error("Update profile error:", error);
@@ -1453,6 +521,7 @@ export const updateProfile = async (req, res) => {
   }
 };
 
+// ==================== CHANGE PASSWORD ====================
 export const changePassword = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -1468,12 +537,11 @@ export const changePassword = async (req, res) => {
     if (newPassword.length < 8) {
       return res.status(400).json({
         success: false,
-        message: "New password must be at least 8 characters",
+        message: "New password must be at least 8 characters long",
       });
     }
 
     const usersCollection = db.collection("users");
-
     const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
 
     if (!user) {
@@ -1483,18 +551,9 @@ export const changePassword = async (req, res) => {
       });
     }
 
-    if (!user.password) {
-      return res.status(400).json({
-        success: false,
-        message: "This account uses social login. No password to change.",
-      });
-    }
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
 
-    const isValidPassword = await bcrypt.compare(
-      currentPassword,
-      user.password,
-    );
-    if (!isValidPassword) {
+    if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
         message: "Current password is incorrect",
@@ -1505,12 +564,7 @@ export const changePassword = async (req, res) => {
 
     await usersCollection.updateOne(
       { _id: new ObjectId(userId) },
-      {
-        $set: {
-          password: hashedPassword,
-          updatedAt: new Date(),
-        },
-      },
+      { $set: { password: hashedPassword, updatedAt: new Date() } }
     );
 
     return res.status(200).json({
@@ -1526,6 +580,7 @@ export const changePassword = async (req, res) => {
   }
 };
 
+// ==================== CHANGE PIN ====================
 export const changePin = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -1541,12 +596,11 @@ export const changePin = async (req, res) => {
     if (newPin.length !== 6 || !/^\d+$/.test(newPin)) {
       return res.status(400).json({
         success: false,
-        message: "PIN must be 6 digits",
+        message: "PIN must be exactly 6 digits",
       });
     }
 
     const usersCollection = db.collection("users");
-
     const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
 
     if (!user) {
@@ -1556,8 +610,9 @@ export const changePin = async (req, res) => {
       });
     }
 
-    const isValidPin = await bcrypt.compare(currentPin, user.pin);
-    if (!isValidPin) {
+    const isPinValid = await bcrypt.compare(currentPin, user.pin);
+
+    if (!isPinValid) {
       return res.status(401).json({
         success: false,
         message: "Current PIN is incorrect",
@@ -1568,12 +623,7 @@ export const changePin = async (req, res) => {
 
     await usersCollection.updateOne(
       { _id: new ObjectId(userId) },
-      {
-        $set: {
-          pin: hashedPin,
-          updatedAt: new Date(),
-        },
-      },
+      { $set: { pin: hashedPin, updatedAt: new Date() } }
     );
 
     return res.status(200).json({
@@ -1589,42 +639,18 @@ export const changePin = async (req, res) => {
   }
 };
 
+// ==================== UPDATE NOMINEE ====================
 export const updateNominee = async (req, res) => {
   try {
     const userId = req.user.id;
-    const {
-      nomineeFirstName,
-      nomineeLastName,
-      nomineeRelation,
-      nomineePhone,
-      nomineeNid,
-      nomineeShare,
-    } = req.body;
+    const { nominee } = req.body;
 
     const usersCollection = db.collection("users");
 
-    const updateData = {
-      "nominee.firstName": nomineeFirstName,
-      "nominee.lastName": nomineeLastName || null,
-      "nominee.fullName": `${nomineeFirstName} ${nomineeLastName || ""}`.trim(),
-      "nominee.relation": nomineeRelation,
-      "nominee.phone": nomineePhone,
-      "nominee.nid": nomineeNid || null,
-      "nominee.share": parseInt(nomineeShare) || 100,
-      updatedAt: new Date(),
-    };
-
-    const result = await usersCollection.updateOne(
+    await usersCollection.updateOne(
       { _id: new ObjectId(userId) },
-      { $set: updateData },
+      { $set: { nominee, updatedAt: new Date() } }
     );
-
-    if (result.matchedCount === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
 
     return res.status(200).json({
       success: true,
@@ -1639,72 +665,18 @@ export const updateNominee = async (req, res) => {
   }
 };
 
+// ==================== UPDATE PAYMENT METHOD ====================
 export const updatePaymentMethod = async (req, res) => {
   try {
     const userId = req.user.id;
-    const {
-      paymentMethod,
-      walletNumber,
-      walletName,
-      bankName,
-      bankAccNum,
-      bankAccName,
-      bankBranch,
-      bankRouting,
-    } = req.body;
-
-    if (!paymentMethod) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment method is required",
-      });
-    }
+    const { paymentMethod, paymentDetails } = req.body;
 
     const usersCollection = db.collection("users");
 
-    const updateData = {
-      paymentMethod,
-      updatedAt: new Date(),
-    };
-
-    if (paymentMethod !== "bank") {
-      if (!walletNumber || !walletName) {
-        return res.status(400).json({
-          success: false,
-          message: "Wallet number and account name are required",
-        });
-      }
-      updateData.paymentDetails = {
-        walletNumber,
-        accountName: walletName,
-      };
-    } else {
-      if (!bankName || !bankAccNum || !bankAccName) {
-        return res.status(400).json({
-          success: false,
-          message: "Bank name, account number, and account name are required",
-        });
-      }
-      updateData.paymentDetails = {
-        bankName,
-        accountNumber: bankAccNum,
-        accountName: bankAccName,
-        branch: bankBranch || null,
-        routingNumber: bankRouting || null,
-      };
-    }
-
-    const result = await usersCollection.updateOne(
+    await usersCollection.updateOne(
       { _id: new ObjectId(userId) },
-      { $set: updateData },
+      { $set: { paymentMethod, paymentDetails, updatedAt: new Date() } }
     );
-
-    if (result.matchedCount === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
 
     return res.status(200).json({
       success: true,
@@ -1719,6 +691,7 @@ export const updatePaymentMethod = async (req, res) => {
   }
 };
 
+// ==================== UPLOAD PROFILE PICTURE ====================
 export const uploadProfilePicture = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -1731,7 +704,6 @@ export const uploadProfilePicture = async (req, res) => {
     }
 
     const usersCollection = db.collection("users");
-
     const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
 
     if (user?.profilePicturePublicId) {
@@ -1750,16 +722,18 @@ export const uploadProfilePicture = async (req, res) => {
           profilePicturePublicId: req.file.filename,
           updatedAt: new Date(),
         },
-      },
+      }
+    );
+
+    const updatedUser = await usersCollection.findOne(
+      { _id: new ObjectId(userId) },
+      { projection: { password: 0, pin: 0 } }
     );
 
     return res.status(200).json({
       success: true,
       message: "Profile picture uploaded successfully",
-      data: {
-        url: req.file.path,
-        publicId: req.file.filename,
-      },
+      data: sanitizeUserResponse(updatedUser),
     });
   } catch (error) {
     console.error("Upload profile picture error:", error);
@@ -1770,22 +744,21 @@ export const uploadProfilePicture = async (req, res) => {
   }
 };
 
+// ==================== DELETE PROFILE PICTURE ====================
 export const deleteProfilePicture = async (req, res) => {
   try {
     const userId = req.user.id;
-
     const usersCollection = db.collection("users");
 
     const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
 
-    if (!user?.profilePicturePublicId) {
-      return res.status(404).json({
-        success: false,
-        message: "No profile picture found",
-      });
+    if (user?.profilePicturePublicId) {
+      try {
+        await deleteFromCloudinary(user.profilePicturePublicId, "image");
+      } catch (err) {
+        console.error("Failed to delete profile picture from Cloudinary:", err);
+      }
     }
-
-    await deleteFromCloudinary(user.profilePicturePublicId, "image");
 
     await usersCollection.updateOne(
       { _id: new ObjectId(userId) },
@@ -1795,7 +768,7 @@ export const deleteProfilePicture = async (req, res) => {
           profilePicturePublicId: null,
           updatedAt: new Date(),
         },
-      },
+      }
     );
 
     return res.status(200).json({
@@ -1811,30 +784,110 @@ export const deleteProfilePicture = async (req, res) => {
   }
 };
 
-export const deleteAccount = async (req, res) => {
+// ==================== UPDATE PLAN ====================
+export const updatePlan = async (req, res) => {
   try {
     const userId = req.user.id;
+    const { selectedPlan, billingCycle } = req.body;
+
+    // Validate plan
+    const validPlans = ["bronze", "silver", "gold", "platinum", "custom"];
+    if (!selectedPlan || !validPlans.includes(selectedPlan.toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid plan. Must be one of: ${validPlans.join(", ")}`,
+      });
+    }
+
+    // Validate billing cycle
+    const validCycles = ["monthly", "yearly"];
+    if (!billingCycle || !validCycles.includes(billingCycle.toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid billing cycle. Must be 'monthly' or 'yearly'",
+      });
+    }
+
+    const planKey = selectedPlan.toLowerCase();
+    const cycleKey = billingCycle.toLowerCase();
+    const planConfig = PLAN_CONFIG[planKey];
+
+    if (!planConfig) {
+      return res.status(400).json({
+        success: false,
+        message: "Plan configuration not found",
+      });
+    }
+
+    // Calculate fee and expiry
+    const planFee = cycleKey === "yearly" ? planConfig.yearlyFee : planConfig.monthlyFee;
+    const planExpiry = cycleKey === "yearly"
+      ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     const usersCollection = db.collection("users");
 
-    const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+    const updateData = {
+      selectedPlan: planKey,
+      billingCycle: cycleKey,
+      planFee,
+      planActive: true,
+      planExpiry,
+      updatedAt: new Date(),
+    };
 
-    if (!user) {
+    // If custom plan, keep existing customPlanName or clear it
+    if (planKey === "custom") {
+      updateData.planFee = 0;
+    }
+
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
       return res.status(404).json({
         success: false,
         message: "User not found",
       });
     }
 
-    if (user.profilePicturePublicId) {
-      try {
-        await deleteFromCloudinary(user.profilePicturePublicId, "image");
-      } catch (err) {
-        console.error("Failed to delete profile picture:", err);
-      }
-    }
+    const updatedUser = await usersCollection.findOne(
+      { _id: new ObjectId(userId) },
+      { projection: { password: 0, pin: 0 } }
+    );
 
-    await usersCollection.deleteOne({ _id: new ObjectId(userId) });
+    // Generate new token with updated plan
+    const token = generateToken(updatedUser);
+
+    return res.status(200).json({
+      success: true,
+      message: `Plan upgraded to ${planKey.charAt(0).toUpperCase() + planKey.slice(1)} (${cycleKey}) successfully`,
+      data: {
+        user: sanitizeUserResponse(updatedUser),
+        token,
+      },
+    });
+  } catch (error) {
+    console.error("Update plan error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update plan",
+    });
+  }
+};
+
+// ==================== DELETE ACCOUNT ====================
+export const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const usersCollection = db.collection("users");
+
+    await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: { accountActive: false, updatedAt: new Date() } }
+    );
 
     return res.status(200).json({
       success: true,
@@ -1849,235 +902,282 @@ export const deleteAccount = async (req, res) => {
   }
 };
 
-// Get active sessions
-export const getActiveSessions = async (req, res) => {
+// ==================== EMAIL OTP ====================
+export const sendEmailOtp = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const { email } = req.body;
 
-    const sessionsCollection = db.collection("user_sessions");
-
-    const sessions = await sessionsCollection
-      .find({
-        userId: new ObjectId(userId),
-        isActive: true,
-        expiresAt: { $gt: new Date() },
-      })
-      .sort({ lastActivity: -1 })
-      .toArray();
-
-    // Format sessions for frontend
-    const formattedSessions = sessions.map((session) => ({
-      id: session._id,
-      device: getDeviceIcon(session.device),
-      deviceType: session.device,
-      name: session.deviceName || `${session.device} Device`,
-      location: session.location || "Unknown Location",
-      ip: session.ip,
-      time: getTimeAgo(session.lastActivity),
-      isCurrent: session.token === req.headers.authorization?.split(" ")[1],
-      lastActivity: session.lastActivity,
-    }));
-
-    return res.status(200).json({
-      success: true,
-      data: formattedSessions,
-    });
-  } catch (error) {
-    console.error("Get active sessions error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to fetch active sessions",
-    });
-  }
-};
-
-// Revoke a session (logout from specific device)
-export const revokeSession = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { sessionId } = req.params;
-
-    if (!sessionId) {
+    if (!email) {
       return res.status(400).json({
         success: false,
-        message: "Session ID is required",
+        message: "Email is required",
       });
     }
 
-    const sessionsCollection = db.collection("user_sessions");
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    const session = await sessionsCollection.findOne({
-      _id: new ObjectId(sessionId),
-      userId: new ObjectId(userId),
-    });
-
-    if (!session) {
-      return res.status(404).json({
-        success: false,
-        message: "Session not found",
-      });
-    }
-
-    // Don't allow revoking current session
-    const currentToken = req.headers.authorization?.split(" ")[1];
-    if (session.token === currentToken) {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot revoke current session. Use logout instead.",
-      });
-    }
-
-    await sessionsCollection.updateOne(
-      { _id: new ObjectId(sessionId) },
-      {
-        $set: {
-          isActive: false,
-          revokedAt: new Date(),
-          revokedBy: new ObjectId(userId),
-        },
-      },
+    const usersCollection = db.collection("users");
+    await usersCollection.updateOne(
+      { email },
+      { $set: { emailOtp: otp, emailOtpExpiry: otpExpiry } },
+      { upsert: true }
     );
 
-    return res.status(200).json({
-      success: true,
-      message: "Session revoked successfully",
-    });
-  } catch (error) {
-    console.error("Revoke session error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to revoke session",
-    });
-  }
-};
-
-// Get login history
-export const getLoginHistory = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { page = 1, limit = 20 } = req.query;
-
-    const loginHistoryCollection = db.collection("login_history");
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const limitNum = parseInt(limit);
-
-    const history = await loginHistoryCollection
-      .find({ userId: new ObjectId(userId) })
-      .sort({ loginTime: -1 })
-      .skip(skip)
-      .limit(limitNum)
-      .toArray();
-
-    const total = await loginHistoryCollection.countDocuments({
-      userId: new ObjectId(userId),
-    });
-
-    const formattedHistory = history.map((entry) => ({
-      id: entry._id,
-      success: entry.success,
-      name: entry.success ? "Successful Login" : "Failed Login Attempt",
-      time: formatLoginTime(entry.loginTime),
-      device: entry.device,
-      location: entry.location,
-      ip: entry.ip,
-    }));
+    await sendOtpEmail(email, otp);
 
     return res.status(200).json({
       success: true,
-      data: {
-        history: formattedHistory,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / limitNum),
-          totalItems: total,
-          itemsPerPage: limitNum,
-        },
-      },
+      message: "OTP sent successfully",
     });
   } catch (error) {
-    console.error("Get login history error:", error);
+    console.error("Send email OTP error:", error);
     return res.status(500).json({
       success: false,
-      message: error.message || "Failed to fetch login history",
+      message: error.message || "Failed to send OTP",
     });
   }
 };
 
-// Helper functions
-const getDeviceIcon = (device) => {
-  const deviceLower = device?.toLowerCase() || "";
-  if (deviceLower.includes("android")) return "📱";
-  if (deviceLower.includes("ios") || deviceLower.includes("iphone"))
-    return "🍎";
-  if (deviceLower.includes("windows")) return "💻";
-  if (deviceLower.includes("mac")) return "🖥️";
-  if (deviceLower.includes("linux")) return "🐧";
-  return "🌐";
-};
-
-const getTimeAgo = (date) => {
-  if (!date) return "Unknown";
-  const now = new Date();
-  const diff = now - new Date(date);
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (minutes < 1) return "Active now";
-  if (minutes < 60) return `${minutes} min ago`;
-  if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
-  if (days < 7) return `${days} day${days > 1 ? "s" : ""} ago`;
-  return new Date(date).toLocaleDateString();
-};
-
-const formatLoginTime = (date) => {
-  if (!date) return "Unknown";
-  const now = new Date();
-  const loginDate = new Date(date);
-  const diff = now - loginDate;
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = loginDate.getHours();
-  const minutes = loginDate.getMinutes();
-  const ampm = hours >= 12 ? "PM" : "AM";
-  const formattedHours = hours % 12 || 12;
-
-  if (days === 0) {
-    return `Today, ${formattedHours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
-  } else if (days === 1) {
-    return `Yesterday, ${formattedHours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
-  } else {
-    return `${days} days ago, ${formattedHours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
-  }
-};
-
-// ==================== GET USER BY ID (ADMIN & USER SELF) ====================
-
-export const getUserById = async (req, res) => {
+// ==================== VERIFY EMAIL OTP ====================
+export const verifyEmailOtp = async (req, res) => {
   try {
-    const { id } = req.params;
-    const requestingUserId = req.user.id;
-    const requestingUserRole = req.user.role;
+    const { email, otp } = req.body;
 
-    // Check authorization - only admin or the user themselves can view
-    if (requestingUserRole !== "admin" && requestingUserId !== id) {
-      return res.status(403).json({
+    if (!email || !otp) {
+      return res.status(400).json({
         success: false,
-        message: "You are not authorized to view this user's details",
+        message: "Email and OTP are required",
       });
     }
 
     const usersCollection = db.collection("users");
-    const depositsCollection = db.collection("deposits");
-    const withdrawalsCollection = db.collection("withdrawals");
-    const goalsCollection = db.collection("goals");
-    const circlesCollection = db.collection("circles");
-    const loginHistoryCollection = db.collection("login_history");
-    const sessionsCollection = db.collection("user_sessions");
+    const user = await usersCollection.findOne({ email });
 
-    // Get user basic info
+    if (!user || user.emailOtp !== otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    if (new Date() > new Date(user.emailOtpExpiry)) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired",
+      });
+    }
+
+    await usersCollection.updateOne(
+      { email },
+      { $set: { emailVerified: true, emailOtp: null, emailOtpExpiry: null } }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully",
+    });
+  } catch (error) {
+    console.error("Verify email OTP error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to verify OTP",
+    });
+  }
+};
+
+// ==================== PASSWORD RESET ====================
+export const sendPasswordResetOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+    const user = await usersCollection.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await usersCollection.updateOne(
+      { email },
+      { $set: { passwordResetOtp: otp, passwordResetOtpExpiry: otpExpiry } }
+    );
+
+    await sendPasswordResetOtpEmail(email, otp);
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset OTP sent successfully",
+    });
+  } catch (error) {
+    console.error("Send password reset OTP error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to send password reset OTP",
+    });
+  }
+};
+
+// ==================== RESET PASSWORD ====================
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Email, OTP, and new password are required",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters long",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+    const user = await usersCollection.findOne({ email });
+
+    if (!user || user.passwordResetOtp !== otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    if (new Date() > new Date(user.passwordResetOtpExpiry)) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await usersCollection.updateOne(
+      { email },
+      { $set: { password: hashedPassword, passwordResetOtp: null, passwordResetOtpExpiry: null } }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully",
+    });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to reset password",
+    });
+  }
+};
+
+// ==================== VALIDATE REFERRAL CODE ====================
+export const validateReferralCode = async (req, res) => {
+  try {
+    const { code } = req.params;
+
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        message: "Referral code is required",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+    const user = await usersCollection.findOne({ referralCode: code.toUpperCase() });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid referral code",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Referral code is valid",
+      data: {
+        referrerName: user.fullName || `${user.firstName} ${user.lastName}`,
+      },
+    });
+  } catch (error) {
+    console.error("Validate referral code error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to validate referral code",
+    });
+  }
+};
+
+// ==================== UPLOAD KYC DOCUMENTS ====================
+export const uploadKycDocuments = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { documents } = req.body;
+
+    const usersCollection = db.collection("users");
+
+    await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          "kyc.nidNumber": documents?.nidNumber || null,
+          "kyc.nidFrontImage": documents?.nidFrontImage || null,
+          "kyc.nidBackImage": documents?.nidBackImage || null,
+          "kyc.birthCertificateImage": documents?.birthCertificateImage || null,
+          "kyc.selfieImage": documents?.selfieImage || null,
+          "kyc.passportImage": documents?.passportImage || null,
+          "kyc.status": "pending",
+          "kyc.submittedAt": new Date(),
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "KYC documents uploaded successfully",
+    });
+  } catch (error) {
+    console.error("Upload KYC documents error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to upload KYC documents",
+    });
+  }
+};
+
+// ==================== SEARCH USER BY PHONE ====================
+export const searchUserByPhone = async (req, res) => {
+  try {
+    const { phone } = req.query;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+    }
+
+    const usersCollection = db.collection("users");
     const user = await usersCollection.findOne(
-      { _id: new ObjectId(id) },
+      { phone: { $regex: escapeRegex(phone), $options: "i" } },
       { projection: { password: 0, pin: 0 } }
     );
 
@@ -2088,395 +1188,10 @@ export const getUserById = async (req, res) => {
       });
     }
 
-    // Get all deposits
-    const deposits = await depositsCollection
-      .find({ userId: new ObjectId(id) })
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .toArray();
-
-    // Get all withdrawals
-    const withdrawals = await withdrawalsCollection
-      .find({ userId: new ObjectId(id) })
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .toArray();
-
-    // Get all goals
-    const goals = await goalsCollection
-      .find({ userId: new ObjectId(id) })
-      .sort({ createdAt: -1 })
-      .toArray();
-
-    // Get circles user is part of
-    const circles = await circlesCollection
-      .find({ 
-        $or: [
-          { creatorId: new ObjectId(id) },
-          { "members.userId": new ObjectId(id) }
-        ]
-      })
-      .toArray();
-
-    // Get login history (last 20)
-    const loginHistory = await loginHistoryCollection
-      .find({ userId: new ObjectId(id) })
-      .sort({ loginTime: -1 })
-      .limit(20)
-      .toArray();
-
-    // Get active sessions
-    const activeSessions = await sessionsCollection
-      .find({ 
-        userId: new ObjectId(id), 
-        isActive: true,
-        expiresAt: { $gt: new Date() }
-      })
-      .sort({ lastActivity: -1 })
-      .toArray();
-
-    // Calculate statistics
-    const totalDeposits = deposits
-      .filter(d => d.status === "approved")
-      .reduce((sum, d) => sum + (d.depositAmount || d.amount || 0), 0);
-    
-    const totalWithdrawals = withdrawals
-      .filter(w => w.status === "completed")
-      .reduce((sum, w) => sum + (w.withdrawalAmount || w.amount || 0), 0);
-    
-    const pendingDeposits = deposits.filter(d => d.status === "pending").length;
-    const pendingWithdrawals = withdrawals.filter(w => w.status === "pending").length;
-    
-    const activeGoals = goals.filter(g => g.status === "active").length;
-    const completedGoals = goals.filter(g => g.status === "completed").length;
-    
-    const totalLoginSuccess = loginHistory.filter(l => l.success === true).length;
-    const totalLoginFailed = loginHistory.filter(l => l.success === false).length;
-
-    // Format deposits for response
-    const formattedDeposits = deposits.map(d => ({
-      id: d._id,
-      amount: d.depositAmount || d.amount || 0,
-      status: d.status,
-      method: d.paymentMethod || d.method,
-      transactionId: d.transactionId,
-      screenshot: d.screenshot,
-      note: d.note,
-      createdAt: d.createdAt,
-      updatedAt: d.updatedAt,
-    }));
-
-    // Format withdrawals for response
-    const formattedWithdrawals = withdrawals.map(w => ({
-      id: w._id,
-      amount: w.withdrawalAmount || w.amount || 0,
-      status: w.status,
-      method: w.paymentMethod || w.method,
-      transactionId: w.transactionId,
-      note: w.note,
-      createdAt: w.createdAt,
-      updatedAt: w.updatedAt,
-    }));
-
-    // Format goals for response
-    const formattedGoals = goals.map(g => ({
-      id: g._id,
-      title: g.title,
-      type: g.type,
-      targetAmount: g.targetAmount,
-      currentAmount: g.currentAmount,
-      monthlyDeposit: g.monthlyDeposit,
-      duration: g.duration,
-      startDate: g.startDate,
-      targetDate: g.targetDate,
-      status: g.status,
-      progress: g.currentAmount && g.targetAmount 
-        ? Math.round((g.currentAmount / g.targetAmount) * 100) 
-        : 0,
-      createdAt: g.createdAt,
-      updatedAt: g.updatedAt,
-    }));
-
-    // Format login history for response
-    const formattedLoginHistory = loginHistory.map(h => ({
-      id: h._id,
-      success: h.success,
-      device: h.device,
-      deviceName: h.deviceName,
-      browser: h.browser,
-      os: h.os,
-      ip: h.ip,
-      location: h.location,
-      failureReason: h.failureReason,
-      loginTime: h.loginTime,
-    }));
-
-    // Format active sessions for response
-    const formattedSessions = activeSessions.map(s => ({
-      id: s._id,
-      device: s.device,
-      deviceName: s.deviceName,
-      browser: s.browser,
-      os: s.os,
-      ip: s.ip,
-      location: s.location,
-      lastActivity: s.lastActivity,
-      createdAt: s.createdAt,
-      expiresAt: s.expiresAt,
-    }));
-
-    // Format circles for response
-    const formattedCircles = circles.map(c => ({
-      id: c._id,
-      name: c.name,
-      type: c.type,
-      status: c.status,
-      totalMembers: c.members?.length || 0,
-      totalSaved: c.totalSaved || 0,
-      createdAt: c.createdAt,
-    }));
-
-    // Prepare response data with sanitization
-    const responseData = {
-      // Basic Information
-      id: user._id,
-      firstName: user.firstName || "",
-      lastName: user.lastName || "",
-      fullName: user.fullName || `${user.firstName || ""} ${user.lastName || ""}`.trim() || "User",
-      phone: user.phone || "",
-      email: user.email || "",
-      role: user.role || "user",
-      
-      // Personal Details
-      dob: user.dob || null,
-      gender: user.gender || null,
-      division: user.division || null,
-      district: user.district || null,
-      upazila: user.upazila || null,
-      village: user.village || null,
-      postOffice: user.postOffice || null,
-      postCode: user.postCode || null,
-      occupation: user.occupation || null,
-      income: user.income || null,
-      
-      // Address
-      address: user.address || {
-        division: user.division || null,
-        district: user.district || null,
-        upazila: user.upazila || null,
-        village: user.village || null,
-        postOffice: user.postOffice || null,
-        postCode: user.postCode || null,
-      },
-      
-      // Account Status
-      accountActive: Boolean(user.accountActive),
-      isBanned: Boolean(user.isBanned),
-      isSuspended: Boolean(user.isSuspended),
-      banReason: user.banReason || null,
-      suspensionReason: user.suspensionReason || null,
-      
-      // KYC Information
-      kycStatus: user.kyc?.status || "pending",
-      kycCompleted: Boolean(user.kycCompleted),
-      kyc: {
-        nidNumber: user.kyc?.nidNumber || null,
-        nidFrontImage: user.kyc?.nidFrontImage || null,
-        nidBackImage: user.kyc?.nidBackImage || null,
-        birthCertificateImage: user.kyc?.birthCertificateImage || null,
-        selfieImage: user.kyc?.selfieImage || null,
-        passportImage: user.kyc?.passportImage || null,
-        kycConsent: Boolean(user.kyc?.kycConsent),
-        status: user.kyc?.status || "pending",
-        submittedAt: user.kyc?.submittedAt || null,
-        verifiedAt: user.kyc?.verifiedAt || null,
-        rejectionReason: user.kyc?.rejectionReason || null,
-        islamicMode: Boolean(user.kyc?.islamicMode),
-        skipped: Boolean(user.kyc?.skipped),
-      },
-      
-      // Plan & Level
-      selectedPlan: user.selectedPlan || "bronze",
-      customPlanName: user.customPlanName || null,
-      level: Number(user.level) || 1,
-      streak: Number(user.streak) || 0,
-      
-      // Financial Statistics
-      totalSaved: Number(user.totalSaved) || 0,
-      totalDeposits: Number(totalDeposits) || 0,
-      totalWithdrawals: Number(totalWithdrawals) || 0,
-      netSavings: Number(totalDeposits - totalWithdrawals) || 0,
-      pendingDeposits: Number(pendingDeposits) || 0,
-      pendingWithdrawals: Number(pendingWithdrawals) || 0,
-      totalReferralBonus: Number(user.totalReferralBonus) || 0,
-      totalBonusEarned: Number(user.totalBonusEarned) || 0,
-      
-      // Goal Statistics
-      totalGoals: Number(goals.length) || 0,
-      activeGoals: Number(activeGoals) || 0,
-      completedGoals: Number(completedGoals) || 0,
-      
-      // Referral Information
-      referralCode: user.referralCode || null,
-      referredBy: user.referredBy || null,
-      referralBonusApplied: Boolean(user.referralBonusApplied),
-      totalReferrals: Number(user.totalReferrals) || 0,
-      
-      // Nominee Information
-      nominee: user.nominee || null,
-      
-      // Payment Information
-      paymentMethod: user.paymentMethod || null,
-      paymentDetails: user.paymentDetails || null,
-      
-      // Profile
-      profilePicture: user.profilePicture || null,
-      
-      // Login Statistics
-      loginStats: {
-        totalLogins: Number(totalLoginSuccess) || 0,
-        failedLogins: Number(totalLoginFailed) || 0,
-        lastLogin: user.lastLogin || null,
-        lastLoginIp: user.lastLoginIp || null,
-        lastLoginDevice: user.lastLoginDevice || null,
-      },
-      
-      // Verification Flags
-      phoneVerified: Boolean(user.phoneVerified),
-      emailVerified: Boolean(user.emailVerified),
-      
-      // Marketing & Agreements
-      marketing: Boolean(user.marketing),
-      termsAccepted: Boolean(user.termsAccepted),
-      withdrawalPolicyAccepted: Boolean(user.withdrawalPolicyAccepted),
-      
-      // Timestamps
-      createdAt: user.createdAt || null,
-      updatedAt: user.updatedAt || null,
-      
-      // Detailed Lists
-      deposits: formattedDeposits,
-      withdrawals: formattedWithdrawals,
-      goals: formattedGoals,
-      circles: formattedCircles,
-      loginHistory: formattedLoginHistory,
-      activeSessions: formattedSessions,
-      
-      // Summary
-      summary: {
-        totalDepositAmount: Number(totalDeposits) || 0,
-        totalWithdrawalAmount: Number(totalWithdrawals) || 0,
-        netSavings: Number(totalDeposits - totalWithdrawals) || 0,
-        totalGoals: Number(goals.length) || 0,
-        completedGoals: Number(completedGoals) || 0,
-        totalCircles: Number(circles.length) || 0,
-        totalLoginAttempts: Number(totalLoginSuccess + totalLoginFailed) || 0,
-        successRate: totalLoginSuccess + totalLoginFailed > 0 
-          ? Math.round((totalLoginSuccess / (totalLoginSuccess + totalLoginFailed)) * 100) 
-          : 0,
-      },
-    };
-
-    // Add goal specific data if exists
-    if (user.goal) {
-      responseData.goal = {
-        type: user.goal.type || null,
-        customGoalName: user.goal.customGoalName || null,
-        targetAmount: Number(user.goal.targetAmount) || 0,
-        monthlyDeposit: Number(user.goal.monthlyDeposit) || 0,
-        duration: Number(user.goal.duration) || 0,
-        currentSaved: Number(user.goal.currentSaved) || 0,
-        progress: Number(user.goal.progress) || 0,
-      };
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: responseData,
-    });
-  } catch (error) {
-    console.error("Get user by ID error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to fetch user details",
-    });
-  }
-};
-
-// Add this to auth.controller.js
-
-// ==================== SEARCH USER BY PHONE ====================
-
-export const searchUserByPhone = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { phone } = req.query;
-
-    if (!phone || phone.length < 11) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid phone number is required",
-      });
-    }
-
-    // Clean phone number (remove +880 if present)
-    let cleanPhone = phone.replace(/^\+880/, '').replace(/\D/g, '');
-    
-    // If phone starts with 0, remove it
-    if (cleanPhone.startsWith('0')) {
-      cleanPhone = cleanPhone.substring(1);
-    }
-
-    // Ensure phone is exactly 11 digits (for Bangladesh)
-    if (cleanPhone.length !== 11) {
-      return res.status(400).json({
-        success: false,
-        message: "Phone number must be 11 digits (e.g., 1XXXXXXXXXX)",
-      });
-    }
-
-    const usersCollection = db.collection("users");
-
-    // Find user by phone - search with and without +880
-    const user = await usersCollection.findOne(
-      { 
-        $or: [
-          { phone: phone },
-          { phone: `+880${cleanPhone}` },
-          { phone: `0${cleanPhone}` },
-          { phone: cleanPhone }
-        ]
-      },
-      { 
-        projection: { 
-          password: 0, 
-          pin: 0,
-          refreshToken: 0,
-          goals: 0,
-        } 
-      }
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // Prevent searching self
-    if (user._id.toString() === userId.toString()) {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot transfer to yourself",
-      });
-    }
-
     return res.status(200).json({
       success: true,
       data: {
         id: user._id,
-        name: user.fullName || user.firstName,
         firstName: user.firstName,
         lastName: user.lastName,
         phone: user.phone,
