@@ -2,6 +2,7 @@
 import { db } from "../../database/db.js";
 import { ObjectId } from "mongodb";
 import { generateWithdrawalNotification } from "../notification/notification.controller.js";
+import { emitAdminNotification } from "../../socket/socket.js";
 
 // Create withdrawal request
 export const createWithdrawal = async (req, res) => {
@@ -180,6 +181,22 @@ export const createWithdrawal = async (req, res) => {
     const result = await withdrawalsCollection.insertOne(newWithdrawal);
 
     const withdrawal = { ...newWithdrawal, _id: result.insertedId };
+
+    try {
+      emitAdminNotification({
+        type: "withdrawal",
+        status: "pending",
+        title: "New Withdrawal Request",
+        message: `A withdrawal request of ৳${withdrawal.withdrawalAmount.toLocaleString()} is awaiting approval.`,
+        userId: withdrawal.userId,
+        entityId: withdrawal._id,
+        entityType: "withdrawal",
+        read: false,
+        createdAt: new Date(),
+      });
+    } catch (notificationError) {
+      console.error("Failed to emit admin withdrawal notification:", notificationError);
+    }
 
     return res.status(201).json({
       success: true,
@@ -447,6 +464,21 @@ export const approveWithdrawal = async (req, res) => {
       }
     );
 
+    try {
+      await generateWithdrawalNotification(
+        {
+          ...withdrawal,
+          status: "approved",
+          approvedBy: new ObjectId(adminId),
+          approvedAt: new Date(),
+          remarks: remarks || null,
+        },
+        "approved"
+      );
+    } catch (notifError) {
+      console.error("Failed to send withdrawal approval notification:", notifError);
+    }
+
     // Skip goal update for referral bonus withdrawals (goalId is null)
     if (!withdrawal.goalId || withdrawal.isReferralBonus) {
       return res.status(200).json({
@@ -630,6 +662,19 @@ export const completeWithdrawal = async (req, res) => {
         },
       }
     );
+
+    try {
+      await generateWithdrawalNotification(
+        {
+          ...withdrawal,
+          status: "completed",
+          remarks: remarks || withdrawal.remarks || null,
+        },
+        "completed"
+      );
+    } catch (notifError) {
+      console.error("Failed to send withdrawal completion notification:", notifError);
+    }
 
     // For referral bonus withdrawals, update user's totalReferralBonus and totalWithdrawals
     if (withdrawal.isReferralBonus) {

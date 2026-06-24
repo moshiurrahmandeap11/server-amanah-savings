@@ -3,6 +3,10 @@ import { db } from "../../database/db.js";
 import { ObjectId } from "mongodb";
 import { applyReferralBonusForApprovedDeposit } from "../referral/referral.controller.js";
 import {
+  generateDepositNotification,
+} from "../notification/notification.controller.js";
+import { emitAdminNotification } from "../../socket/socket.js";
+import {
   defaultPaymentInstructions,
   normalizePaymentInstructions,
 } from "../admin/admin.controller.js";
@@ -333,6 +337,22 @@ export const createDeposit = async (req, res) => {
 
     const result = await depositsCollection.insertOne(newDeposit);
     const deposit = { ...newDeposit, _id: result.insertedId };
+
+    try {
+      emitAdminNotification({
+        type: "deposit",
+        status: "pending",
+        title: "New Deposit Request",
+        message: `A new deposit request of ৳${deposit.depositAmount.toLocaleString()} is awaiting approval.`,
+        userId: deposit.userId,
+        entityId: deposit._id,
+        entityType: "deposit",
+        read: false,
+        createdAt: new Date(),
+      });
+    } catch (notificationError) {
+      console.error("Failed to emit admin deposit notification:", notificationError);
+    }
 
     return res.status(201).json({
       success: true,
@@ -679,6 +699,21 @@ export const approveDeposit = async (req, res) => {
         };
       }
 
+      try {
+        await generateDepositNotification(
+          {
+            ...deposit,
+            status: "approved",
+            approvedBy: new ObjectId(adminId),
+            approvedAt: now,
+            remarks: remarks || null,
+          },
+          "approved"
+        );
+      } catch (notifError) {
+        console.error("Failed to send deposit approval notification:", notifError);
+      }
+
       return res.status(200).json({
         success: true,
         message: "Circle deposit approved successfully",
@@ -828,6 +863,21 @@ export const approveDeposit = async (req, res) => {
       };
     }
 
+    try {
+      await generateDepositNotification(
+        {
+          ...deposit,
+          status: "approved",
+          approvedBy: new ObjectId(adminId),
+          approvedAt: new Date(),
+          remarks: remarks || null,
+        },
+        "approved"
+      );
+    } catch (notifError) {
+      console.error("Failed to send deposit approval notification:", notifError);
+    }
+
     return res.status(200).json({
       success: true,
       message: "Deposit approved successfully",
@@ -905,6 +955,21 @@ export const rejectDeposit = async (req, res) => {
         },
       }
     );
+
+    try {
+      await generateDepositNotification(
+        {
+          ...deposit,
+          status: "rejected",
+          approvedBy: new ObjectId(adminId),
+          approvedAt: new Date(),
+          remarks,
+        },
+        "rejected"
+      );
+    } catch (notifError) {
+      console.error("Failed to send deposit rejection notification:", notifError);
+    }
 
     return res.status(200).json({
       success: true,
