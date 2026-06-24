@@ -87,16 +87,25 @@ router.patch("/admin/tickets/:ticketId/status", verifyAdmin, updateTicketStatus)
 router.get("/admin/messages/:userId", verifyAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
-    const { limit = 50 } = req.query;
+    const { limit = 50, chatType = "all" } = req.query;
+    const adminId = req.user._id || req.user.id;
     const messagesCollection = db.collection("messages");
+    const match = {
+      $or: [
+        { senderId: new ObjectId(userId), receiverId: new ObjectId(adminId) },
+        { senderId: new ObjectId(adminId), receiverId: new ObjectId(userId) },
+      ],
+    };
+
+    if (chatType === "live") {
+      match.$or = [
+        { ...match.$or[0], $or: [{ ticketId: null }, { ticketId: { $exists: false } }] },
+        { ...match.$or[1], $or: [{ ticketId: null }, { ticketId: { $exists: false } }] },
+      ];
+    }
     
     const messages = await messagesCollection
-      .find({
-        $or: [
-          { senderId: new ObjectId(userId) },
-          { receiverId: new ObjectId(userId) },
-        ],
-      })
+      .find(match)
       .sort({ createdAt: 1 })
       .limit(parseInt(limit))
       .toArray();
@@ -119,6 +128,7 @@ router.post("/admin/messages/:userId", verifyAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
     const { message, ticketId } = req.body;
+    const { chatType = "all" } = req.query;
     const adminId = req.user._id || req.user.id;
     
     if (!message) {
@@ -134,7 +144,7 @@ router.post("/admin/messages/:userId", verifyAdmin, async (req, res) => {
       receiverId: new ObjectId(userId),
       message,
       senderRole: "admin",
-      ticketId: ticketId || null,
+      ticketId: chatType === "live" ? null : (ticketId || null),
       read: false,
       createdAt: new Date(),
     };

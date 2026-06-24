@@ -5,6 +5,18 @@ import { ObjectId } from "mongodb";
 
 let io = null;
 
+const toObjectIdSafe = (value) => {
+  try {
+    if (!value) return null;
+    if (ObjectId.isValid(value)) {
+      return new ObjectId(value);
+    }
+    return null;
+  } catch (_error) {
+    return null;
+  }
+};
+
 export const initSocketIO = (httpServer) => {
   io = new Server(httpServer, {
     cors: {
@@ -59,9 +71,16 @@ export const initSocketIO = (httpServer) => {
         if (!senderId || !receiverId || !message) return;
 
         const messagesCollection = db.collection("messages");
+        const senderObjectId = toObjectIdSafe(senderId);
+        const receiverObjectId = toObjectIdSafe(receiverId);
+
+        if (!senderObjectId) {
+          return;
+        }
+
         const newMessage = {
-          senderId: new ObjectId(senderId),
-          receiverId: new ObjectId(receiverId),
+          senderId: senderObjectId,
+          receiverId: receiverObjectId,
           message,
           senderRole,
           ticketId: ticketId || null,
@@ -71,23 +90,21 @@ export const initSocketIO = (httpServer) => {
         const result = await messagesCollection.insertOne(newMessage);
         const msgWithId = { ...newMessage, _id: result.insertedId };
 
-        // Emit to receiver's user room
-        io.to(`user_${receiverId}`).emit("receive_message", msgWithId);
-        
-        // Emit to sender's user room (for real-time feedback)
-        io.to(`user_${senderId}`).emit("receive_message", msgWithId);
-        
-        // Also emit to admin room if sender is admin
-        if (senderRole === "admin") {
-          io.to("admin").emit("receive_message", msgWithId);
-          if (receiverId) {
-            io.to(`admin_${receiverId}`).emit("receive_message", msgWithId);
+        if (receiverId === "admin") {
+          socket.to("admin").emit("receive_message", msgWithId);
+        } else {
+          io.to(`user_${receiverId}`).emit("receive_message", msgWithId);
+          if (senderRole === "admin") {
+            socket.to("admin").emit("receive_message", msgWithId);
           }
         }
-        
-        // Emit to ticket room if ticketId exists
+
+        // Acknowledge sender exactly once to avoid duplicate local renders
+        socket.emit("receive_message", msgWithId);
+
+        // Ticket-room broadcast excludes sender socket
         if (ticketId) {
-          io.to(`ticket_${ticketId}`).emit("receive_message", msgWithId);
+          socket.to(`ticket_${ticketId}`).emit("receive_message", msgWithId);
         }
         
         console.log("Message sent:", msgWithId);
