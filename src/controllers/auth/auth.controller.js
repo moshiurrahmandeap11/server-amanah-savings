@@ -38,7 +38,10 @@ export const checkUserExists = async (req, res) => {
     const result = { exists: false, phoneExists: false, emailExists: false };
 
     if (phone) {
-      const phoneUser = await usersCollection.findOne({ phone });
+      const phoneUser = await usersCollection.findOne({
+        phone,
+        password: { $exists: true, $ne: null },
+      });
       if (phoneUser) {
         result.phoneExists = true;
         result.exists = true;
@@ -46,7 +49,10 @@ export const checkUserExists = async (req, res) => {
     }
 
     if (email && email.trim()) {
-      const emailUser = await usersCollection.findOne({ email: email.trim().toLowerCase() });
+      const emailUser = await usersCollection.findOne({
+        email: email.trim().toLowerCase(),
+        password: { $exists: true, $ne: null },
+      });
       if (emailUser) {
         result.emailExists = true;
         result.exists = true;
@@ -193,12 +199,27 @@ export const register = async (req, res) => {
       });
     }
 
-    // Check if user already exists
-    const existingUser = await usersCollection.findOne({
-      $or: [{ email }, { phone }],
-    });
+    // Normalize email/phone and check if user already exists (only if provided)
+    const normalizedEmail = email ? email.trim().toLowerCase() : null;
+    const normalizedPhone = phone ? phone.trim() : null;
 
-    if (existingUser) {
+    // Reject only real account conflicts (legacy OTP placeholder docs may exist without password).
+    const [emailConflict, phoneConflict] = await Promise.all([
+      normalizedEmail
+        ? usersCollection.findOne({
+            email: normalizedEmail,
+            password: { $exists: true, $ne: null },
+          })
+        : null,
+      normalizedPhone
+        ? usersCollection.findOne({
+            phone: normalizedPhone,
+            password: { $exists: true, $ne: null },
+          })
+        : null,
+    ]);
+
+    if (emailConflict || phoneConflict) {
       return res.status(409).json({
         success: false,
         message: "User with this email or phone already exists",
@@ -230,8 +251,8 @@ export const register = async (req, res) => {
       firstName,
       lastName,
       fullName: `${firstName} ${lastName}`.trim(),
-      phone,
-      email,
+      phone: normalizedPhone,
+      email: normalizedEmail,
       password: hashedPassword,
       dob: dob || null,
       gender: gender || null,
@@ -292,17 +313,40 @@ export const register = async (req, res) => {
       updatedAt: new Date(),
     };
 
-    const result = await usersCollection.insertOne(newUser);
+    // Reuse a legacy OTP placeholder doc if one exists for this email; otherwise create a fresh user.
+    const otpPlaceholder = normalizedEmail
+      ? await usersCollection.findOne({
+          email: normalizedEmail,
+          $or: [{ password: { $exists: false } }, { password: null }],
+        })
+      : null;
+
+    let userId;
+    if (otpPlaceholder?._id) {
+      await usersCollection.updateOne(
+        { _id: otpPlaceholder._id },
+        {
+          $set: {
+            ...newUser,
+            updatedAt: new Date(),
+          },
+        }
+      );
+      userId = otpPlaceholder._id;
+    } else {
+      const result = await usersCollection.insertOne(newUser);
+      userId = result.insertedId;
+    }
 
     // Generate token
-    const token = generateToken({ ...newUser, _id: result.insertedId });
+    const token = generateToken({ ...newUser, _id: userId });
 
     return res.status(201).json({
       success: true,
       message: "Registration successful",
       data: {
         token,
-        user: sanitizeUserResponse({ ...newUser, _id: result.insertedId }),
+        user: sanitizeUserResponse({ ...newUser, _id: userId }),
       },
     });
   } catch (error) {
@@ -962,17 +1006,30 @@ export const sendEmailOtp = async (req, res) => {
       });
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
     const otp = generateOTP();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    const usersCollection = db.collection("users");
-    await usersCollection.updateOne(
-      { email },
-      { $set: { emailOtp: otp, emailOtpExpiry: otpExpiry } },
+    // Store registration OTPs in a dedicated collection to avoid creating placeholder user records.
+    const emailOtpsCollection = db.collection("email_otps");
+    await emailOtpsCollection.updateOne(
+      { email: normalizedEmail },
+      {
+        $set: {
+          email: normalizedEmail,
+          otp,
+          otpExpiry,
+          verified: false,
+          updatedAt: new Date(),
+        },
+        $setOnInsert: {
+          createdAt: new Date(),
+        },
+      },
       { upsert: true }
     );
 
-    await sendOtpEmail(email, otp);
+    await sendOtpEmail(normalizedEmail, otp);
 
     return res.status(200).json({
       success: true,
@@ -999,26 +1056,35 @@ export const verifyEmailOtp = async (req, res) => {
       });
     }
 
-    const usersCollection = db.collection("users");
-    const user = await usersCollection.findOne({ email });
+    const normalizedEmail = email.trim().toLowerCase();
+    const emailOtpsCollection = db.collection("email_otps");
+    const otpDoc = await emailOtpsCollection.findOne({ email: normalizedEmail });
 
-    if (!user || user.emailOtp !== otp) {
+    if (!otpDoc || otpDoc.otp !== otp) {
       return res.status(400).json({
         success: false,
         message: "Invalid OTP",
       });
     }
 
-    if (new Date() > new Date(user.emailOtpExpiry)) {
+    if (new Date() > new Date(otpDoc.otpExpiry)) {
       return res.status(400).json({
         success: false,
         message: "OTP has expired",
       });
     }
 
-    await usersCollection.updateOne(
-      { email },
-      { $set: { emailVerified: true, emailOtp: null, emailOtpExpiry: null } }
+    await emailOtpsCollection.updateOne(
+      { email: normalizedEmail },
+      {
+        $set: {
+          verified: true,
+          verifiedAt: new Date(),
+          otp: null,
+          otpExpiry: null,
+          updatedAt: new Date(),
+        },
+      }
     );
 
     return res.status(200).json({

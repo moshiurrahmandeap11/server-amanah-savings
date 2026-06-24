@@ -1,5 +1,4 @@
-// Check if user exists (phone/email)
-router.get("/check-exists", checkUserExists);import { Router } from "express";
+import { Router } from "express";
 import { 
   register,
   sendEmailOtp,
@@ -29,6 +28,9 @@ import { uploadSingle } from "../../middlewares/upload.js";
 const router = Router();
 
 // ==================== PUBLIC ROUTES ====================
+
+// Check if user exists (phone/email)
+router.get("/check-exists", checkUserExists);
 
 // Registration
 router.post("/register", register);
