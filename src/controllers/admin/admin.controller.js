@@ -2131,6 +2131,42 @@ export const defaultPaymentInstructions = {
   },
 };
 
+// Default per-method payment details
+export const defaultPaymentMethods = {
+  bkash: {
+    enabled: true,
+    number: "018XXXXXXXX",
+    accountName: "Sanchoy Bondhu",
+    type: "personal",
+    instructions: {
+      en: "Send money via bKash to this number. Use your email as reference.",
+      bn: "বিকাশ-এর মাধ্যমে এই নম্বরে টাকা পাঠান। রেফারেন্স হিসেবে আপনার ইমেইল ব্যবহার করুন।",
+    },
+  },
+  nagad: {
+    enabled: true,
+    number: "018XXXXXXXX",
+    accountName: "Sanchoy Bondhu",
+    type: "personal",
+    instructions: {
+      en: "Send money via Nagad to this number. Use your email as reference.",
+      bn: "নগদ-এর মাধ্যমে এই নম্বরে টাকা পাঠান। রেফারেন্স হিসেবে আপনার ইমেইল ব্যবহার করুন।",
+    },
+  },
+  bank: {
+    enabled: true,
+    bankName: "Dutch-Bangla Bank Limited",
+    accountNumber: "1234567890123",
+    accountHolderName: "Sanchoy Bondhu",
+    branch: "Main Branch",
+    routingNumber: "090110000",
+    instructions: {
+      en: "Transfer to the bank account below. Use your email as reference.",
+      bn: "নিচের ব্যাংক অ্যাকাউন্টে ট্রান্সফার করুন। রেফারেন্স হিসেবে আপনার ইমেইল ব্যবহার করুন।",
+    },
+  },
+};
+
 export const normalizePaymentInstructions = (instructions = {}) => ({
   en: {
     ...defaultPaymentInstructions.en,
@@ -2139,6 +2175,21 @@ export const normalizePaymentInstructions = (instructions = {}) => ({
   bn: {
     ...defaultPaymentInstructions.bn,
     ...(instructions.bn || {}),
+  },
+});
+
+export const normalizePaymentMethods = (methods = {}) => ({
+  bkash: {
+    ...defaultPaymentMethods.bkash,
+    ...(methods.bkash || {}),
+  },
+  nagad: {
+    ...defaultPaymentMethods.nagad,
+    ...(methods.nagad || {}),
+  },
+  bank: {
+    ...defaultPaymentMethods.bank,
+    ...(methods.bank || {}),
   },
 });
 
@@ -2175,6 +2226,7 @@ export const getPlatformSettings = async (req, res) => {
           bankTransferEnabled: true,
           cardEnabled: false,
           instructions: defaultPaymentInstructions,
+          methods: defaultPaymentMethods,
         },
         notifications: {
           depositConfirmation: true,
@@ -2203,6 +2255,7 @@ export const getPlatformSettings = async (req, res) => {
     settings.payments = {
       ...(settings.payments || {}),
       instructions: normalizePaymentInstructions(settings.payments?.instructions),
+      methods: normalizePaymentMethods(settings.payments?.methods),
     };
 
     return res.status(200).json({ success: true, data: settings });
@@ -2229,6 +2282,9 @@ export const updatePlatformSettings = async (req, res) => {
           ...updates.payments,
           instructions: normalizePaymentInstructions(
             updates.payments.instructions || existingPayments.instructions,
+          ),
+          methods: normalizePaymentMethods(
+            updates.payments.methods || existingPayments.methods,
           ),
         }
       : existingPayments;
@@ -2257,13 +2313,14 @@ export const getPaymentInstructions = async (req, res) => {
     const settingsCollection = db.collection("platform_settings");
     const settings = await settingsCollection.findOne(
       { key: "platform" },
-      { projection: { "payments.instructions": 1 } },
+      { projection: { "payments.instructions": 1, "payments.methods": 1 } },
     );
 
     return res.status(200).json({
       success: true,
       data: {
         instructions: normalizePaymentInstructions(settings?.payments?.instructions),
+        methods: normalizePaymentMethods(settings?.payments?.methods),
       },
     });
   } catch (error) {
@@ -2463,7 +2520,7 @@ export const getCmsContent = async (req, res) => {
           endDate: null,
         },
         footer: {
-          copyright: "© 2026 Amanah Savings. All rights reserved.",
+          copyright: "© 2025 Sonchoy Bondhu Community. All rights reserved. Bangladesh.",
           socials: {
             facebook: "",
             twitter: "",
@@ -2471,10 +2528,50 @@ export const getCmsContent = async (req, res) => {
             linkedin: "",
           },
           links: [
-            { label: "Privacy Policy", url: "/privacy" },
-            { label: "Terms of Service", url: "/terms" },
-            { label: "Contact Us", url: "/contact" },
+            { label: "Privacy", url: "/privacy" },
+            { label: "Terms and conditions", url: "/terms" },
+            { label: "Withdrawal policy", url: "/terms" },
+            { label: "Announcement", url: "/terms" },
           ],
+          sections: [
+            {
+              title: "Platform",
+              links: [
+                { label: "How it works", url: "/how-it-works" },
+                { label: "Savings plan", url: "/#savings-plan", isScroll: true, targetId: "savings-plan" },
+                { label: "Savings goal", url: "/#savings-goal", isScroll: true, targetId: "savings-goal" },
+                { label: "Community Circle", url: "/goals" },
+                { label: "Security and trust", url: "/#security-trust", isScroll: true, targetId: "security-trust" },
+              ],
+            },
+            {
+              title: "Company",
+              links: [
+                { label: "About us", url: "/about-us" },
+                { label: "Contact", url: "/contact" },
+                { label: "Blog", url: "/blogs" },
+                { label: "Career", url: "/about-us" },
+                { label: "Press", url: "/press" },
+              ],
+            },
+            {
+              title: "Support",
+              links: [
+                { label: "Q&A", url: "/faq" },
+                { label: "Help Center", url: "/faq" },
+                { label: "Privacy Policy", url: "/privacy" },
+                { label: "Terms of Use", url: "/terms" },
+                { label: "Withdrawal policy", url: "/terms" },
+              ],
+            },
+          ],
+          brandName: "Sanchoy Bondhu",
+          brandDesc: "Bangladesh's trusted digital savings community platform. Save together, achieve goals, build your future — in a halal and disciplined way.",
+          announcementBadge: "Important Announcement:",
+          announcementText: "Sonchoy Bondhu Community is a savings circle management platform. We are not a bank, investment company or financial institution. We do not guarantee any returns or profits. Savings are locked in according to the member's own and circle terms.",
+          supportLabel: "Support",
+          emailLabel: "Email",
+          emailAddress: "sanchoybondhu@gmail.com",
         },
         createdAt: new Date(),
         updatedAt: new Date(),

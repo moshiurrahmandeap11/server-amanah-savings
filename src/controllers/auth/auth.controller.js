@@ -28,6 +28,43 @@ const generateOTP = () => {
 
 const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// ==================== CHECK USER EXISTS (PUBLIC) ====================
+export const checkUserExists = async (req, res) => {
+  try {
+    const { phone, email } = req.query;
+    const usersCollection = db.collection("users");
+
+    const result = { exists: false, phoneExists: false, emailExists: false };
+
+    if (phone) {
+      const phoneUser = await usersCollection.findOne({ phone });
+      if (phoneUser) {
+        result.phoneExists = true;
+        result.exists = true;
+      }
+    }
+
+    if (email && email.trim()) {
+      const emailUser = await usersCollection.findOne({ email: email.trim().toLowerCase() });
+      if (emailUser) {
+        result.emailExists = true;
+        result.exists = true;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Check user exists error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to check user existence",
+    });
+  }
+};
+
 // Helper to sanitize user data for frontend - prevents null/undefined/NaN display issues
 const sanitizeUserResponse = (user) => {
   if (!user) return null;

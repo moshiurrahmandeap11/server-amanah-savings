@@ -1,4 +1,8 @@
-import { Router } from "express";
+import {
+  getAllPlanUpgrades,
+  approvePlanUpgrade,
+  rejectPlanUpgrade,
+} from "../../controllers/plan/plan.controller.js";import { Router } from "express";
 import {
   getAllUsers,
   getUserById,
@@ -93,5 +97,10 @@ router.put("/cms", verifyAdmin, updateCmsContent);
 
 // Transactions (deposits + withdrawals combined)
 router.get("/transactions", verifyAdmin, getAllTransactions);
+
+// Plan upgrade approvals
+router.get("/plan-upgrades", verifyAdmin, getAllPlanUpgrades);
+router.patch("/plan-upgrades/:id/approve", verifyAdmin, approvePlanUpgrade);
+router.patch("/plan-upgrades/:id/reject", verifyAdmin, rejectPlanUpgrade);
 
 export default router;

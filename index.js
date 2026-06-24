@@ -1,4 +1,4 @@
-import cors from "cors";
+import planUpgradeRoutes from "./src/routes/plan/plan.routes.js";import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import { createServer } from "http";
@@ -74,6 +74,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/help", helpRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/balance", balanceRoutes);
+app.use("/api/plan-upgrades", planUpgradeRoutes);
 app.get("/api/cms", getCmsContent);
 app.get("/api/payment-instructions", getPaymentInstructions);
 

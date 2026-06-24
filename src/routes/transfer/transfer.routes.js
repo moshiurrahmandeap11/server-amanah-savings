@@ -7,6 +7,7 @@ import {
   getUserTransfers,
   getTransferById,
   getAllTransfers,
+  getRecipientGoals,
 } from "../../controllers/transfer/transfer.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
 import verifyAdmin from "../../middlewares/verifyAdmin.js";
@@ -21,6 +22,7 @@ router.use(verifyToken);
 router.post("/goal-to-goal", goalToGoalTransfer);
 router.post("/user-to-user", userToUserTransfer);
 router.get("/search-user", searchUserByPhone);
+router.get("/recipient-goals/:userId", getRecipientGoals);
 
 // Admin routes
 router.get("/admin/all", verifyAdmin, getAllTransfers);

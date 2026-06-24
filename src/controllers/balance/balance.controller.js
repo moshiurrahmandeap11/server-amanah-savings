@@ -146,14 +146,14 @@ export const getUserBalanceSummary = async (req, res) => {
     const totalWithdrawn = withdrawalStats[0]?.totalWithdrawn || 0;
     const totalReferralBonusEarned = referralBonusStats[0]?.totalReferralBonus || 0;
     const totalReferralBonusWithdrawn = referralBonusWithdrawn[0]?.totalWithdrawn || 0;
-    const pendingReferralBonusWithdrawals = pendingReferralBonusWithdrawals[0]?.totalPending || 0;
+    const pendingReferralBonusAmount = pendingReferralBonusWithdrawals[0]?.totalPending || 0;
 
     // Available referral bonus = earned - withdrawn - pending
     const availableReferralBonus = Math.max(
       0,
       totalReferralBonusEarned -
         totalReferralBonusWithdrawn -
-        pendingReferralBonusWithdrawals
+        pendingReferralBonusAmount
     );
 
     // Net balance = total deposits - total withdrawn
@@ -356,7 +356,7 @@ export const createReferralBonusWithdrawal = async (req, res) => {
 
     const availableReferralBonus = Math.max(
       0,
-      totalReferralBonusEarned - totalReferralBonusWithdrawn - pendingReferralBonusWithdrawals
+      totalReferralBonusEarned - totalReferralBonusWithdrawn - pendingReferralBonusAmount
     );
 
     const withdrawalAmountNum = parseFloat(withdrawalAmount);
@@ -426,6 +426,236 @@ export const createReferralBonusWithdrawal = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to submit referral bonus withdrawal request",
+    });
+  }
+};
+
+// Transfer referral bonus to a savings goal
+export const transferReferralBonusToGoal = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { amount, goalId } = req.body;
+
+    // Validation
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid amount is required",
+      });
+    }
+
+    if (!goalId) {
+      return res.status(400).json({
+        success: false,
+        message: "Goal ID is required",
+      });
+    }
+
+    const usersCollection = db.collection("users");
+    const goalsCollection = db.collection("goals");
+    const depositsCollection = db.collection("deposits");
+    const notificationsCollection = db.collection("notifications");
+    const userObjectId = new ObjectId(userId);
+
+    // Check if user exists
+    const user = await usersCollection.findOne({ _id: userObjectId });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Check if goal exists and belongs to user
+    const goalObjectId = new ObjectId(goalId);
+    const goal = await goalsCollection.findOne({
+      _id: goalObjectId,
+      userId: userObjectId,
+    });
+
+    if (!goal) {
+      return res.status(404).json({
+        success: false,
+        message: "Goal not found or does not belong to you",
+      });
+    }
+
+    if (goal.status === "completed") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot add bonus to a completed goal",
+      });
+    }
+
+    const transferAmount = parseFloat(amount);
+
+    // Calculate available referral bonus (same logic as getUserBalanceSummary)
+    const referralsCollection = db.collection("referrals");
+    const withdrawalsCollection = db.collection("withdrawals");
+
+    const referralBonusStats = await referralsCollection
+      .aggregate([
+        {
+          $match: {
+            $or: [
+              { referrerId: userObjectId, referrerBonusPaid: true },
+              { referredUserId: userObjectId, referredBonusPaid: true },
+            ],
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalReferralBonus: { $sum: { $ifNull: ["$bonusAmount", 500] } },
+          },
+        },
+      ])
+      .toArray();
+
+    const withdrawnStats = await withdrawalsCollection
+      .aggregate([
+        {
+          $match: {
+            userId: userObjectId,
+            status: { $in: ["approved", "completed"] },
+            isReferralBonus: true,
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalWithdrawn: { $sum: "$withdrawalAmount" },
+          },
+        },
+      ])
+      .toArray();
+
+    const pendingStats = await withdrawalsCollection
+      .aggregate([
+        {
+          $match: {
+            userId: userObjectId,
+            status: "pending",
+            isReferralBonus: true,
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalPending: { $sum: "$withdrawalAmount" },
+          },
+        },
+      ])
+      .toArray();
+
+    const totalReferralBonusEarned = referralBonusStats[0]?.totalReferralBonus || 0;
+    const totalReferralBonusWithdrawn = withdrawnStats[0]?.totalWithdrawn || 0;
+    const pendingReferralBonusWithdrawals = pendingStats[0]?.totalPending || 0;
+
+    const availableReferralBonus = Math.max(
+      0,
+      totalReferralBonusEarned - totalReferralBonusWithdrawn - pendingReferralBonusWithdrawals
+    );
+
+    // Check if user has enough referral bonus
+    if (transferAmount > availableReferralBonus) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient referral bonus. Available: ৳${availableReferralBonus.toLocaleString()}, Requested: ৳${transferAmount.toLocaleString()}`,
+      });
+    }
+
+    // Calculate new goal values
+    const newCurrentSaved = (goal.currentSaved || 0) + transferAmount;
+    const newProgress = Math.min(
+      100,
+      Math.round((newCurrentSaved / goal.targetAmount) * 100)
+    );
+    const isGoalCompleted = newCurrentSaved >= goal.targetAmount;
+
+    // Update goal
+    await goalsCollection.updateOne(
+      { _id: goalObjectId },
+      {
+        $set: {
+          currentSaved: newCurrentSaved,
+          progress: newProgress,
+          status: isGoalCompleted ? "completed" : "active",
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    // Create deposit record for this transfer (for tracking)
+    const depositRecord = {
+      userId: userObjectId,
+      goalId: goalObjectId,
+      goalName: goal.goalName,
+      depositAmount: transferAmount,
+      paymentMethod: "referral_bonus",
+      status: "approved",
+      isBonus: true,
+      bonusType: "referral",
+      notes: "Referral bonus transferred to goal",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    await depositsCollection.insertOne(depositRecord);
+
+    // Update user's total referral bonus (track transferred amount)
+    const totalTransferredToGoals = user.totalReferralBonusTransferredToGoals || 0;
+    await usersCollection.updateOne(
+      { _id: userObjectId },
+      {
+        $set: {
+          totalReferralBonusTransferredToGoals: totalTransferredToGoals + transferAmount,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    // Create notification
+    const notification = {
+      userId: userObjectId,
+      title: "Referral Bonus Added to Goal",
+      message: `৳${transferAmount.toLocaleString()} referral bonus has been added to your "${goal.goalName}" goal.`,
+      type: "bonus",
+      isRead: false,
+      createdAt: new Date(),
+    };
+
+    await notificationsCollection.insertOne(notification);
+
+    // Goal completion notification if applicable
+    if (isGoalCompleted && goal.status !== "completed") {
+      const completionNotification = {
+        userId: userObjectId,
+        title: "🎉 Goal Completed!",
+        message: `Congratulations! Your "${goal.goalName}" goal has been completed with a referral bonus boost!`,
+        type: "goal",
+        isRead: false,
+        createdAt: new Date(),
+      };
+      await notificationsCollection.insertOne(completionNotification);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `৳${transferAmount.toLocaleString()} referral bonus transferred to "${goal.goalName}" successfully`,
+      data: {
+        amount: transferAmount,
+        goalName: goal.goalName,
+        newCurrentSaved,
+        newProgress,
+        goalCompleted: isGoalCompleted,
+      },
+    });
+  } catch (error) {
+    console.error("Transfer referral bonus to goal error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to transfer referral bonus to goal",
     });
   }
 };

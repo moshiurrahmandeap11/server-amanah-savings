@@ -275,6 +275,13 @@ export const userToUserTransfer = async (req, res) => {
       });
     }
 
+    if (!toGoalId) {
+      return res.status(400).json({
+        success: false,
+        message: "Destination goal is required",
+      });
+    }
+
     if (!amount || amount <= 0) {
       return res.status(400).json({
         success: false,
@@ -372,9 +379,18 @@ export const userToUserTransfer = async (req, res) => {
 
     // Get or create recipient's default goal (or first active goal)
     let toGoal = await goalsCollection.findOne({
+      _id: new ObjectId(toGoalId),
       userId: toUser._id,
       status: "active",
     });
+
+    // If specified goal not found or not active, try first active goal
+    if (!toGoal) {
+      toGoal = await goalsCollection.findOne({
+        userId: toUser._id,
+        status: "active",
+      });
+    }
 
     // If no active goal, create a default "General Savings" goal
     if (!toGoal) {
@@ -529,6 +545,50 @@ export const userToUserTransfer = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to complete transfer",
+    });
+  }
+};
+
+// Get recipient's active goals for P2P transfer
+export const getRecipientGoals = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId || !ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid user ID is required",
+      });
+    }
+
+    const goalsCollection = db.collection("goals");
+
+    const goals = await goalsCollection
+      .find({
+        userId: new ObjectId(userId),
+        status: "active",
+      })
+      .toArray();
+
+    // If no active goals, return empty array - frontend will handle
+    return res.status(200).json({
+      success: true,
+      data: {
+        goals: goals.map((goal) => ({
+          _id: goal._id,
+          goalName: goal.goalName,
+          goalType: goal.goalType,
+          currentSaved: goal.currentSaved || 0,
+          targetAmount: goal.targetAmount || 0,
+          progress: goal.progress || 0,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Get recipient goals error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch recipient goals",
     });
   }
 };

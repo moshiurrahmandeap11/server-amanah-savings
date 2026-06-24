@@ -1,4 +1,5 @@
-import { Router } from "express";
+// Check if user exists (phone/email)
+router.get("/check-exists", checkUserExists);import { Router } from "express";
 import { 
   register,
   sendEmailOtp,
@@ -20,6 +21,7 @@ import {
   sendPasswordResetOtp,
   resetPassword,
   updatePlan,
+  checkUserExists,
 } from "../../controllers/auth/auth.controller.js";
 import verifyToken from "../../middlewares/verifyToken.js";
 import { uploadSingle } from "../../middlewares/upload.js";
