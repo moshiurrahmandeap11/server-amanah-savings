@@ -2495,21 +2495,36 @@ export const getCmsContent = async (req, res) => {
         ],
         faq: [
           {
-            question: "What is Amanah Savings?",
-            answer: "Amanah Savings is an Islamic savings platform...",
+            question: { en: "Can I change my plan later?", bn: "আমি কি পরে আমার প্ল্যান পরিবর্তন করতে পারি?" },
+            answer: { en: "Yes! You can upgrade your plan at any time from your dashboard settings. Downgrading is also possible at the end of your current billing cycle, though features like additional circles or AI access will be removed if you move to a lower tier.", bn: "হ্যাঁ! আপনি যেকোনো সময় আপনার ড্যাশবোর্ড সেটিংস থেকে আপনার প্ল্যান আপগ্রেড করতে পারেন। ডাউনগ্রেডিং আপনার বর্তমান বিলিং চক্রের শেষেও সম্ভব, তবে আপনি যদি নিম্ন টিয়ারে যান তবে অতিরিক্ত সার্কেল বা এআই অ্যাক্সেসের মতো বৈশিষ্ট্যগুলি সরানো হবে।" },
           },
           {
-            question: "How do I start saving?",
-            answer: "Create an account, complete KYC, choose a plan...",
+            question: { en: "Is there a free trial for paid plans?", bn: "পেইড প্ল্যানের জন্য কি বিনামূল্যে ট্রায়াল আছে?" },
+            answer: { en: "Silver and Gold plans include a 30-day free trial with full features. Platinum offers a 14-day trial with a dedicated account manager. No credit card required to start, just KYC verification.", bn: "সিলভার এবং গোল্ড প্ল্যানে ৩০-দিনের বিনামূল্যে ট্রায়াল রয়েছে। প্লাটিনামে একটি ডেডিকেটেড অ্যাকাউন্ট ম্যানেজার সহ ১৪-দিনের ট্রায়াল রয়েছে। শুরু করতে কোন ক্রেডিট কার্ডের প্রয়োজন নেই, শুধু কেওয়াইসি যাচাইকরণ।" },
           },
           {
-            question: "Is my money safe?",
-            answer: "Yes, we use bank-grade encryption and partner with...",
+            question: { en: "What happens if I miss a monthly deposit?", bn: "যদি আমি মাসিক জমা মিস করি তাহলে কী হবে?" },
+            answer: { en: "Missing a deposit breaks your savings streak but does not cancel your plan. Your goal timeline adjusts automatically. We send SMS reminders 3 days before your deposit date. There are no late fees.", bn: "জমা মিস করলে আপনার সঞ্চয় স্ট্রিক ভেঙে যায় কিন্তু আপনার প্ল্যান বাতিল হয় না। আপনার লক্ষ্য সময়রেখা স্বয়ংক্রিয়ভাবে সামঞ্জস্য হয়। আপনার জমার তারিখের ৩ দিন আগে আমরা এসএমএস রিমাইন্ডার পাঠাই। কোন বিলম্ব ফি নেই।" },
           },
           {
-            question: "Can I withdraw early?",
-            answer:
-              "Yes, but a small fee applies to maintain platform sustainability...",
+            question: { en: "How is this different from a bank savings account?", bn: "এটি ব্যাংক সঞ্চয় অ্যাকাউন্ট থেকে কীভাবে আলাদা?" },
+            answer: { en: "Amanah is a digital savings community, not a bank. We do not offer interest, FDIC-style insurance, or banking services. We are a goal-tracking and community savings platform.", bn: "আমানাহ একটি ডিজিটাল সঞ্চয় সম্প্রদায়, ব্যাংক নয়। আমরা সুদ, এফডিআইসি-স্টাইল বীমা বা ব্যাংকিং পরিষেবা অফার করি না। আমরা একটি লক্ষ্য-ট্র্যাকিং এবং কমিউনিটি সঞ্চয় প্ল্যাটফর্ম।" },
+          },
+          {
+            question: { en: "Can I withdraw before my goal date?", bn: "আমি কি আমার লক্ষ্য তারিখের আগে উত্তোলন করতে পারি?" },
+            answer: { en: "Yes, but early withdrawals may incur a small processing fee to cover administrative costs. Bronze members cannot make early withdrawals. Platinum members get one free early withdrawal per year.", bn: "হ্যাঁ, কিন্তু অকাল উত্তোলনে প্রশাসনিক খরচ কভার করতে সামান্য প্রসেসিং ফি লাগতে পারে। ব্রোঞ্জ সদস্যরা অকাল উত্তোলন করতে পারেন না। প্লাটিনাম সদস্যরা বছরে একটি বিনামূল্যে অকাল উত্তোলন পায়।" },
+          },
+          {
+            question: { en: "Is Islamic Mode available on all plans?", bn: "ইসলামিক মোড কি সব প্ল্যানে উপলব্ধ?" },
+            answer: { en: "Yes, Islamic savings mode is available on every plan including Bronze. Toggle it on during registration or in your profile settings for riba-free goal and circle calculations.", bn: "হ্যাঁ, ইসলামিক সঞ্চয় মোড ব্রোঞ্জ সহ সব প্ল্যানে উপলব্ধ। নিবন্ধনের সময় বা আপনার প্রোফাইল সেটিংসে এটি সক্রিয় করুন রিবা-মুক্ত লক্ষ্য এবং সার্কেল গণনার জন্য।" },
+          },
+          {
+            question: { en: "What payment methods are accepted?", bn: "কোন পেমেন্ট পদ্ধতি গ্রহণ করা হয়?" },
+            answer: { en: "Bronze members can use bKash and Nagad. Silver, Gold, and Platinum members also have access to bank transfer. Deposits are manually verified within 24 hours by our finance team.", bn: "ব্রোঞ্জ সদস্যরা বিকাশ এবং নগদ ব্যবহার করতে পারেন। সিলভার, গোল্ড এবং প্লাটিনাম সদস্যরা ব্যাংক ট্রান্সফারও ব্যবহার করতে পারেন। আমাদের ফাইন্যান্স টিম দ্বারা ২৪ ঘন্টার মধ্যে জমা ম্যানুয়ালি যাচাই করা হয়।" },
+          },
+          {
+            question: { en: "Are there any hidden fees?", bn: "কোন লুকানো ফি আছে?" },
+            answer: { en: "No hidden fees, ever. The platform fee for Silver, Gold, and Platinum is clearly stated. We will always give notice before any fee changes.", bn: "কখনও কোন লুকানো ফি নেই। সিলভার, গোল্ড এবং প্লাটিনামের জন্য প্ল্যাটফর্ম ফি স্পষ্টভাবে উল্লেখ করা আছে। কোন ফি পরিবর্তনের আগে আমরা সর্বদা নোটিশ দেব।" },
           },
         ],
         announcements: {
