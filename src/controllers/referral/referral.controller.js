@@ -39,7 +39,7 @@ export const applyReferralBonusForApprovedDeposit = async ({ userId, depositAmou
   const depositsCollection = db.collection("deposits");
   const now = new Date();
 
-  const lockedReferralResult = await referralsCollection.findOneAndUpdate(
+  const lockPendingReferral = async () => referralsCollection.findOneAndUpdate(
     {
       referredUserId: referredUserObjectId,
       status: "pending",
@@ -54,7 +54,48 @@ export const applyReferralBonusForApprovedDeposit = async ({ userId, depositAmou
     { returnDocument: "after" }
   );
 
-  const referral = lockedReferralResult?.value || lockedReferralResult;
+  let lockedReferralResult = await lockPendingReferral();
+
+  let referral = lockedReferralResult?.value || lockedReferralResult;
+
+  // Backward-compatibility: older registrations saved referredBy on user but did not create a referrals row.
+  // If missing, bootstrap a pending referral and retry locking.
+  if (!referral) {
+    const referredUser = await usersCollection.findOne(
+      { _id: referredUserObjectId },
+      { projection: { referredBy: 1, referredByCode: 1 } }
+    );
+
+    if (referredUser?.referredBy) {
+      const referredByRaw = referredUser.referredBy;
+      const referrerObjectId = referredByRaw instanceof ObjectId
+        ? referredByRaw
+        : (ObjectId.isValid(referredByRaw) ? new ObjectId(referredByRaw) : null);
+
+      if (referrerObjectId) {
+        const existingAnyReferral = await referralsCollection.findOne({
+          referredUserId: referredUserObjectId,
+        });
+
+        if (!existingAnyReferral) {
+          await referralsCollection.insertOne({
+            referrerId: referrerObjectId,
+            referredUserId: referredUserObjectId,
+            referralCode: referredUser.referredByCode || null,
+            status: "pending",
+            bonusPaid: false,
+            referrerBonusPaid: false,
+            referredBonusPaid: false,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+
+        lockedReferralResult = await lockPendingReferral();
+        referral = lockedReferralResult?.value || lockedReferralResult;
+      }
+    }
+  }
 
   if (!referral) {
     return {

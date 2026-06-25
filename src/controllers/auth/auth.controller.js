@@ -233,9 +233,12 @@ export const register = async (req, res) => {
     const generatedReferralCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
     // Handle referredBy
+    let normalizedReferralCode = null;
+    let referrer = null;
     let referredBy = null;
     if (referralCode) {
-      const referrer = await usersCollection.findOne({ referralCode: referralCode.toUpperCase() });
+      normalizedReferralCode = String(referralCode).trim().toUpperCase();
+      referrer = await usersCollection.findOne({ referralCode: normalizedReferralCode });
       if (referrer) {
         referredBy = referrer._id.toString();
       }
@@ -336,6 +339,45 @@ export const register = async (req, res) => {
     } else {
       const result = await usersCollection.insertOne(newUser);
       userId = result.insertedId;
+    }
+
+    // Create pending referral record for bonus processing on first approved deposit.
+    // Previously only `referredBy` was saved in user doc, so bonus logic could not find a referral row.
+    if (referrer && userId && referrer._id.toString() !== userId.toString()) {
+      const referralsCollection = db.collection("referrals");
+      const referredUserObjectId = new ObjectId(userId);
+      const now = new Date();
+
+      const referralUpsertResult = await referralsCollection.updateOne(
+        { referredUserId: referredUserObjectId },
+        {
+          $setOnInsert: {
+            referrerId: referrer._id,
+            referredUserId: referredUserObjectId,
+            referralCode: referrer.referralCode || normalizedReferralCode,
+            status: "pending",
+            bonusPaid: false,
+            referrerBonusPaid: false,
+            referredBonusPaid: false,
+            createdAt: now,
+          },
+          $set: {
+            updatedAt: now,
+          },
+        },
+        { upsert: true }
+      );
+
+      if (referralUpsertResult.upsertedCount > 0) {
+        await usersCollection.updateOne(
+          { _id: referrer._id },
+          {
+            $inc: { totalReferrals: 1 },
+            $addToSet: { referredUsers: referredUserObjectId },
+            $set: { updatedAt: now },
+          }
+        );
+      }
     }
 
     // Generate token

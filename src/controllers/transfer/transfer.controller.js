@@ -258,6 +258,7 @@ export const userToUserTransfer = async (req, res) => {
       amount,
       note,
       fromGoalId,
+      toGoalId,
     } = req.body;
 
     // Validation
