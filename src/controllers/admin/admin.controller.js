@@ -638,7 +638,7 @@ export const getKycApplications = async (req, res) => {
     const [users, total] = await Promise.all([
       usersCollection
         .find(filter, { projection: { password: 0, pin: 0 } })
-        .sort({ "kyc.submittedAt": -1 })
+        .sort({ "kyc.submittedAt": -1, createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
         .toArray(),

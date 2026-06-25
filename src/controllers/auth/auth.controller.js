@@ -176,6 +176,15 @@ export const register = async (req, res) => {
       duration,
       referralCode,
       kyc,
+      nidNumber,
+      nidFrontImage,
+      nidBackImage,
+      birthCertificateImage,
+      selfieImage,
+      passportImage,
+      kycConsent,
+      kycSkipped,
+      islamicMode,
       nominee,
       paymentMethod,
       paymentDetails,
@@ -249,6 +258,36 @@ export const register = async (req, res) => {
       ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
       : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
+    const resolvedKyc = {
+      nidNumber: kyc?.nidNumber || nidNumber || null,
+      nidFrontImage: kyc?.nidFrontImage || nidFrontImage || null,
+      nidBackImage: kyc?.nidBackImage || nidBackImage || null,
+      birthCertificateImage:
+        kyc?.birthCertificateImage || birthCertificateImage || null,
+      selfieImage: kyc?.selfieImage || selfieImage || null,
+      passportImage: kyc?.passportImage || passportImage || null,
+      kycConsent:
+        typeof kyc?.kycConsent === "boolean"
+          ? kyc.kycConsent
+          : Boolean(kycConsent),
+      kycSkipped:
+        typeof kyc?.kycSkipped === "boolean"
+          ? kyc.kycSkipped
+          : Boolean(kycSkipped),
+      islamicMode:
+        typeof kyc?.islamicMode === "boolean"
+          ? kyc.islamicMode
+          : Boolean(islamicMode),
+    };
+
+    const hasKycDocument = Boolean(
+      resolvedKyc.nidFrontImage ||
+        resolvedKyc.nidBackImage ||
+        resolvedKyc.selfieImage ||
+        resolvedKyc.birthCertificateImage ||
+        resolvedKyc.passportImage
+    );
+
     // Create user document
     const newUser = {
       firstName,
@@ -276,14 +315,17 @@ export const register = async (req, res) => {
       planActive: true,
       planExpiry,
       kyc: {
-        nidNumber: kyc?.nidNumber || null,
-        nidFrontImage: kyc?.nidFrontImage || null,
-        nidBackImage: kyc?.nidBackImage || null,
-        birthCertificateImage: kyc?.birthCertificateImage || null,
-        selfieImage: kyc?.selfieImage || null,
-        passportImage: kyc?.passportImage || null,
-        status: "pending",
-        submittedAt: null,
+        nidNumber: resolvedKyc.nidNumber,
+        nidFrontImage: resolvedKyc.nidFrontImage,
+        nidBackImage: resolvedKyc.nidBackImage,
+        birthCertificateImage: resolvedKyc.birthCertificateImage,
+        selfieImage: resolvedKyc.selfieImage,
+        passportImage: resolvedKyc.passportImage,
+        kycConsent: resolvedKyc.kycConsent,
+        kycSkipped: resolvedKyc.kycSkipped,
+        islamicMode: resolvedKyc.islamicMode,
+        status: hasKycDocument ? "pending" : (resolvedKyc.kycSkipped ? "skipped" : "pending"),
+        submittedAt: hasKycDocument ? new Date() : null,
         verifiedAt: null,
         verifiedBy: null,
       },
