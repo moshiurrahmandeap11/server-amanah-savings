@@ -1326,23 +1326,91 @@ export const validateReferralCode = async (req, res) => {
 // ==================== UPLOAD KYC DOCUMENTS ====================
 export const uploadKycDocuments = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { documents } = req.body;
+    const userId = req.user.id || req.user._id;
+
+    // Support both payload shapes:
+    // 1) { documents: {...} } (older)
+    // 2) flat fields in req.body (current profile form)
+    const documents = (req.body?.documents && typeof req.body.documents === "object")
+      ? req.body.documents
+      : req.body;
 
     const usersCollection = db.collection("users");
+
+    const existingUser = await usersCollection.findOne(
+      { _id: new ObjectId(userId) },
+      { projection: { kyc: 1 } }
+    );
+
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const currentKyc = existingUser.kyc || {};
+
+    const resolveField = (incoming, fallback = null) => {
+      if (incoming === undefined) return fallback;
+      if (typeof incoming === "string") {
+        const trimmed = incoming.trim();
+        return trimmed === "" ? fallback : trimmed;
+      }
+      return incoming ?? fallback;
+    };
+
+    const nextKyc = {
+      nidNumber: resolveField(documents?.nidNumber, currentKyc.nidNumber || null),
+      nidFrontImage: resolveField(documents?.nidFrontImage, currentKyc.nidFrontImage || null),
+      nidBackImage: resolveField(documents?.nidBackImage, currentKyc.nidBackImage || null),
+      birthCertificateImage: resolveField(
+        documents?.birthCertificateImage,
+        currentKyc.birthCertificateImage || null,
+      ),
+      selfieImage: resolveField(documents?.selfieImage, currentKyc.selfieImage || null),
+      passportImage: resolveField(documents?.passportImage, currentKyc.passportImage || null),
+      kycConsent:
+        typeof documents?.kycConsent === "boolean"
+          ? documents.kycConsent
+          : Boolean(currentKyc.kycConsent),
+      islamicMode:
+        typeof documents?.islamicMode === "boolean"
+          ? documents.islamicMode
+          : Boolean(currentKyc.islamicMode),
+      kycSkipped:
+        typeof documents?.kycSkipped === "boolean"
+          ? documents.kycSkipped
+          : Boolean(currentKyc.kycSkipped),
+    };
+
+    const hasKycDocument = Boolean(
+      nextKyc.nidFrontImage ||
+      nextKyc.nidBackImage ||
+      nextKyc.selfieImage ||
+      nextKyc.birthCertificateImage ||
+      nextKyc.passportImage
+    );
+
+    const nextStatus = hasKycDocument
+      ? "pending"
+      : (nextKyc.kycSkipped ? "skipped" : (currentKyc.status || "pending"));
 
     await usersCollection.updateOne(
       { _id: new ObjectId(userId) },
       {
         $set: {
-          "kyc.nidNumber": documents?.nidNumber || null,
-          "kyc.nidFrontImage": documents?.nidFrontImage || null,
-          "kyc.nidBackImage": documents?.nidBackImage || null,
-          "kyc.birthCertificateImage": documents?.birthCertificateImage || null,
-          "kyc.selfieImage": documents?.selfieImage || null,
-          "kyc.passportImage": documents?.passportImage || null,
-          "kyc.status": "pending",
-          "kyc.submittedAt": new Date(),
+          "kyc.nidNumber": nextKyc.nidNumber,
+          "kyc.nidFrontImage": nextKyc.nidFrontImage,
+          "kyc.nidBackImage": nextKyc.nidBackImage,
+          "kyc.birthCertificateImage": nextKyc.birthCertificateImage,
+          "kyc.selfieImage": nextKyc.selfieImage,
+          "kyc.passportImage": nextKyc.passportImage,
+          "kyc.kycConsent": nextKyc.kycConsent,
+          "kyc.islamicMode": nextKyc.islamicMode,
+          "kyc.kycSkipped": nextKyc.kycSkipped,
+          "kyc.status": nextStatus,
+          "kyc.submittedAt": hasKycDocument ? new Date() : (currentKyc.submittedAt || null),
           updatedAt: new Date(),
         },
       }
